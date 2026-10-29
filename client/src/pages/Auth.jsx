@@ -139,3 +139,96 @@ export function Register() {
   );
 }
 
+export function ConfirmEmail() {
+  const [params] = useSearchParams();
+  const [state, setState] = useState({ loading: true });
+  const ran = useRef(false);
+
+  useEffect(() => {
+    if (ran.current) return;
+    ran.current = true;
+    api.post('/auth/confirm', { token: params.get('token') })
+      .then((r) => setState({ ok: true, message: r.message }))
+      .catch((e) => setState({ ok: false, message: e.message }));
+  }, [params]);
+
+  return (
+    <AuthCard title="Confirm your email">
+      {state.loading ? <Loading label="Confirming" /> : (
+        <>
+          <Alert type={state.ok ? 'success' : 'error'}>{state.message}</Alert>
+          <Link to="/login" className="btn btn-primary btn-block">Go to log in</Link>
+        </>
+      )}
+    </AuthCard>
+  );
+}
+
+export function ForgotPassword() {
+  const { busy, error, fields, submit } = useSubmit();
+  const [email, setEmail] = useState('');
+  const [done, setDone] = useState(null);
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    submit(async () => setDone(await api.post('/auth/forgot', { email })));
+  };
+
+  return (
+    <AuthCard title="Reset your password" subtitle="Enter your email and we will send you a reset link.">
+      <Alert>{error}</Alert>
+      {done ? (
+        <>
+          <Alert type="success">{done.message}</Alert>
+          <DemoLink link={done.demoLink} label="Choose a new password" />
+        </>
+      ) : (
+        <form onSubmit={onSubmit} noValidate>
+          <Field label="Email address" error={fields.email} required>
+            {(p) => <input {...p} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />}
+          </Field>
+          <button className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Sending...' : 'Send reset link'}</button>
+        </form>
+      )}
+      <p className="auth-foot"><Link to="/login">Back to log in</Link></p>
+    </AuthCard>
+  );
+}
+
+export function ResetPassword() {
+  const [params] = useSearchParams();
+  const { busy, error, fields, submit } = useSubmit();
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [done, setDone] = useState(null);
+  const [mismatch, setMismatch] = useState('');
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    if (password !== confirm) return setMismatch('The two passwords do not match.');
+    setMismatch('');
+    submit(async () => setDone(await api.post('/auth/reset', { token: params.get('token'), password })));
+  };
+
+  return (
+    <AuthCard title="Choose a new password">
+      <Alert>{error}</Alert>
+      {done ? (
+        <>
+          <Alert type="success">{done.message}</Alert>
+          <Link to="/login" className="btn btn-primary btn-block">Go to log in</Link>
+        </>
+      ) : (
+        <form onSubmit={onSubmit} noValidate>
+          <Field label="New password" error={fields.password} hint="At least 8 characters with a letter and a number." required>
+            {(p) => <input {...p} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
+          </Field>
+          <Field label="Confirm new password" error={mismatch} required>
+            {(p) => <input {...p} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
+          </Field>
+          <button className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Saving...' : 'Save new password'}</button>
+        </form>
+      )}
+    </AuthCard>
+  );
+}
