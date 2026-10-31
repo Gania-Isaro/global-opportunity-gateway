@@ -86,3 +86,61 @@ function ApplyBox({ challenge, myApplication, isOwner, reload }) {
   );
 }
 
+export default function ChallengeDetail() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const { data, error, loading, reload } = useLoad(() => api.get(`/challenges/${id}`), [id]);
+
+  if (loading) return <div className="container"><Loading /></div>;
+  if (error) return <div className="container"><LoadError error={error} /></div>;
+  const { challenge: c, isOwner, myApplication, project } = data;
+
+  return (
+    <div className="container">
+      <Link to="/challenges" className="back-link">← All challenges</Link>
+      <div className="detail-layout">
+        <article className="detail-main">
+          <div className="detail-tags">
+            <span className="sector">{c.sector}</span>
+            <StatusBadge status={c.status} />
+          </div>
+          <h1>{c.title}</h1>
+          <p className="owner-line">
+            Posted by{' '}
+            {c.org_id ? <Link to={`/organisations/${c.org_id}`}>{c.org_name}</Link> : c.owner_name}
+            {c.verified && <VerifiedBadge />}
+            {!c.org_id && <span className="muted"> (individual)</span>}
+          </p>
+
+          <dl className="facts">
+            <div><dt>Application deadline</dt><dd>{formatDate(c.deadline)} {c.status === 'published' && <span className="muted">({daysLeft(c.deadline)})</span>}</dd></div>
+            <div><dt>Team size</dt><dd>{c.team_size} people</dd></div>
+            <div><dt>Applications</dt><dd>{c.application_count}</dd></div>
+          </dl>
+
+          <section>
+            <h2>The challenge</h2>
+            <p className="prose">{c.description}</p>
+          </section>
+          <section>
+            <h2>Expected outcome</h2>
+            <p className="prose">{c.outcome}</p>
+          </section>
+          <section>
+            <h2>Skills needed</h2>
+            <SkillTags skills={c.skills} />
+          </section>
+          {project && (
+            <Alert type="info">A team has been formed for this challenge: {project.name}.</Alert>
+          )}
+          {user && !isOwner && (
+            <p className="report-line"><ReportButton targetType="challenge" targetId={c.id} /></p>
+          )}
+        </article>
+        <aside>
+          <ApplyBox challenge={c} myApplication={myApplication} isOwner={isOwner} reload={reload} />
+        </aside>
+      </div>
+    </div>
+  );
+}
