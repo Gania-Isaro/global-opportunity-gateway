@@ -99,3 +99,83 @@ function FormTeam({ challenge, applications, onDone }) {
   );
 }
 
+// FR 7 Review and selection, FR 8 Team formation
+export default function ReviewApplications() {
+  const { id } = useParams();
+  const { data, error, loading, reload } = useLoad(() => api.get(`/challenges/${id}/applications`), [id]);
+  const [msg, setMsg] = useState(null);
+  const [err, setErr] = useState(null);
+  const [filter, setFilter] = useState('all');
+
+  const onAction = async (url, body, confirmText) => {
+    if (confirmText && !window.confirm(confirmText)) return;
+    setErr(null);
+    try {
+      const r = await api.post(url, body);
+      setMsg(r.message);
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+
+  if (loading && !data) return <div className="container"><Loading /></div>;
+  if (error) return <div className="container"><LoadError error={error} /></div>;
+  const { challenge, applications, project } = data;
+  const shown = applications.filter((a) =>
+    filter === 'all' ? true : filter === 'pending' ? ['submitted', 'under_review'].includes(a.status) : a.status === filter
+  );
+  const counts = {
+    pending: applications.filter((a) => ['submitted', 'under_review'].includes(a.status)).length,
+    accepted: applications.filter((a) => a.status === 'accepted').length,
+    rejected: applications.filter((a) => a.status === 'rejected').length,
+  };
+
+  return (
+    <div className="container">
+      <PageHeader
+        title="Review applications"
+        subtitle={<>For <Link to={`/challenges/${challenge.id}`}>{challenge.title}</Link> · team size {challenge.team_size}</>}
+        back={{ to: '/my-challenges', label: 'My challenges' }}
+      />
+      <Alert type="success" onClose={() => setMsg(null)}>{msg}</Alert>
+      <Alert onClose={() => setErr(null)}>{err}</Alert>
+
+      <div className="detail-layout">
+        <div>
+          <div className="tabs" role="tablist" aria-label="Filter applications">
+            {[
+              ['all', `All (${applications.length})`],
+              ['pending', `To review (${counts.pending})`],
+              ['accepted', `Accepted (${counts.accepted})`],
+              ['rejected', `Rejected (${counts.rejected})`],
+            ].map(([key, label]) => (
+              <button key={key} role="tab" aria-selected={filter === key} className={`tab ${filter === key ? 'active' : ''}`} onClick={() => setFilter(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {shown.length ? (
+            <div className="stack">
+              {shown.map((a) => <ApplicantCard key={a.id} a={a} onAction={onAction} />)}
+            </div>
+          ) : (
+            <Empty title="No applications here yet." />
+          )}
+        </div>
+        <aside>
+          {project ? (
+            <div className="card side-card">
+              <h2>Team formed</h2>
+              <p>The project <strong>{project.name}</strong> is <StatusBadge status={project.status} />.</p>
+              <Link to={`/projects/${project.id}`} className="btn btn-primary btn-block">Open workspace</Link>
+              <p className="small muted">Participants who confirm later can be added from the workspace overview.</p>
+            </div>
+          ) : (
+            <FormTeam challenge={challenge} applications={applications} onDone={reload} />
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
