@@ -121,3 +121,107 @@ function OwnerSection({ o }) {
   );
 }
 
+function ProjectsSection({ projects }) {
+  return (
+    <section className="card panel">
+      <div className="panel-head">
+        <h2>Ongoing projects</h2>
+        <Link to="/projects">See all</Link>
+      </div>
+      {projects.length ? (
+        <ul className="list">
+          {projects.map((p) => (
+            <li key={p.id}>
+              <Link to={`/projects/${p.id}`}><strong>{p.name}</strong></Link>
+              <div className="small muted">{p.challenge_title}{p.is_owner && ' · you own this project'}</div>
+              <ProgressBar value={p.progress} label={`${p.name} progress`} />
+            </li>
+          ))}
+        </ul>
+      ) : <p className="muted">No active projects yet.</p>}
+    </section>
+  );
+}
+
+// FR 11 Role specific dashboards
+export default function Dashboard() {
+  const { user } = useAuth();
+  const { data, error, loading, reload } = useLoad(() => api.get('/dashboard'), []);
+
+  if (loading) return <div className="container"><Loading /></div>;
+  if (error) return <div className="container"><LoadError error={error} reload={reload} /></div>;
+  if (data.role === 'admin') return <div className="container"><AdminDashboard admin={data.admin} /></div>;
+
+  const isOwner = data.role === 'owner';
+  const first = user.full_name?.split(' ')[0];
+
+  return (
+    <div className="container">
+      <PageHeader
+        title={`Hello, ${first}`}
+        subtitle={isOwner ? 'Your challenges, applicants and teams in one place.' : 'Your applications, invitations and projects in one place.'}
+        actions={
+          isOwner
+            ? <Link to="/challenges/new" className="btn btn-primary">Post a challenge</Link>
+            : <Link to="/challenges" className="btn btn-primary">Find challenges</Link>
+        }
+      />
+      {!data.profile.complete && (
+        <Alert type="warning">
+          Your profile is missing: {data.profile.missing.join(', ')}. A complete profile helps owners choose you and is needed to post a challenge.{' '}
+          <Link to="/profile">Complete my profile</Link>
+        </Alert>
+      )}
+      {data.organisation && (
+        <Alert type={data.organisation.status === 'verified' ? 'success' : data.organisation.status === 'rejected' ? 'error' : 'info'}>
+          Organisation <strong>{data.organisation.name}</strong>: <StatusBadge status={data.organisation.status} />
+          {data.organisation.rejection_reason && ` Reason: ${data.organisation.rejection_reason}`} <Link to="/organisation">View</Link>
+        </Alert>
+      )}
+
+      <div className="stats">
+        {isOwner ? (
+          <>
+            <StatCard label="My challenges" value={data.owner.challenges.length} to="/my-challenges" />
+            <StatCard label="Applications to review" value={data.owner.received.pending} to="/my-challenges" />
+            <StatCard label="Active projects" value={data.participant.projects.length} to="/projects" />
+          </>
+        ) : (
+          <>
+            <StatCard label="Applications" value={data.participant.applications.length} to="/applications" />
+            <StatCard label="Invitations waiting" value={data.participant.invitations.length} to="/invitations" />
+            <StatCard label="Active projects" value={data.participant.projects.length} to="/projects" />
+          </>
+        )}
+      </div>
+
+      <div className="dash-grid">
+        {isOwner ? (
+          <>
+            <OwnerSection o={data.owner} />
+            <ProjectsSection projects={data.participant.projects} />
+            {data.participant.applications.length > 0 && <ParticipantSection p={data.participant} />}
+            {!data.organisation && (
+              <section className="card panel">
+                <h2>Representing an organisation?</h2>
+                <p className="muted">Register it to get a Verified badge on your challenges. Individuals can post challenges without one.</p>
+                <Link to="/organisation" className="btn btn-outline">Register organisation</Link>
+              </section>
+            )}
+          </>
+        ) : (
+          <>
+            <ParticipantSection p={data.participant} />
+            <ProjectsSection projects={data.participant.projects} />
+            {data.owner.challenges.length > 0 && <OwnerSection o={data.owner} />}
+          </>
+        )}
+      </div>
+      {!isOwner && data.participant.applications.length === 0 && (
+        <Empty title="Start your first application">
+          Browse open challenges and apply with a short motivation. It only takes a few minutes.
+        </Empty>
+      )}
+    </div>
+  );
+}
