@@ -126,3 +126,83 @@ function useFlash() {
   return { run, view };
 }
 
+// FR 9.2 Overview, FR 8.3 roles
+function Overview({ d, reload }) {
+  const { run, view } = useFlash();
+  const [addId, setAddId] = useState('');
+  const canManage = d.access.canManage;
+
+  const setRole = async (userId, current) => {
+    const role = window.prompt('Role for this member (for example: Technical lead, Researcher, Designer)', current);
+    if (role === null || !role.trim()) return;
+    await run(() => api.put(`/projects/${d.project.id}/members/${userId}`, { role }));
+    reload();
+  };
+
+  return (
+    <div className="ws-grid">
+      <section className="card panel">
+        {view}
+        <h2>Challenge summary</h2>
+        <p className="owner-line">{d.challenge.org_name} {d.challenge.verified && <VerifiedBadge />}</p>
+        <p className="prose">{d.challenge.description}</p>
+        <h3>Expected outcome</h3>
+        <p className="prose">{d.challenge.outcome}</p>
+        <SkillTags skills={d.challenge.skills} />
+        {canManage && (
+          <div className="form-actions">
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={async () => {
+                const done = d.project.status === 'active';
+                if (window.confirm(done ? 'Mark this project as completed?' : 'Reopen this project?')) {
+                  await run(() => api.post(`/projects/${d.project.id}/complete`));
+                  reload();
+                }
+              }}
+            >
+              {d.project.status === 'active' ? 'Mark project completed' : 'Reopen project'}
+            </button>
+          </div>
+        )}
+      </section>
+      <section className="card panel">
+        <h2>Team members</h2>
+        <ul className="members">
+          {d.members.map((m) => (
+            <li key={m.user_id}>
+              <span className="avatar sm" aria-hidden="true">{m.full_name[0]}</span>
+              <div>
+                <Link to={`/users/${m.user_id}`}><strong>{m.full_name}</strong></Link>
+                <div className="small muted">{m.role}</div>
+              </div>
+              {canManage && !m.is_owner && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setRole(m.user_id, m.role)}>Set role</button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {canManage && d.available.length > 0 && (
+          <form
+            className="inline-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!addId) return;
+              await run(() => api.post(`/projects/${d.project.id}/members`, { user_id: Number(addId) }));
+              setAddId('');
+              reload();
+            }}
+          >
+            <label htmlFor="add-member" className="sr-only">Add a confirmed participant</label>
+            <select id="add-member" value={addId} onChange={(e) => setAddId(e.target.value)}>
+              <option value="">Add a confirmed participant</option>
+              {d.available.map((a) => <option key={a.user_id} value={a.user_id}>{a.full_name}</option>)}
+            </select>
+            <button className="btn btn-outline btn-sm">Add</button>
+          </form>
+        )}
+      </section>
+    </div>
+  );
+}
+
