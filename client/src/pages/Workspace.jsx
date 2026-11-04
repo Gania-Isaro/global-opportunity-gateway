@@ -206,3 +206,113 @@ function Overview({ d, reload }) {
   );
 }
 
+// FR 9.3 Tasks
+function Tasks({ projectId, members, onChange }) {
+  const { data, loading, error, reload } = useLoad(() => api.get(`/projects/${projectId}/tasks`), [projectId]);
+  const [form, setForm] = useState({ title: '', assignee_id: '', due_date: '' });
+  const s = useSubmit();
+  const { run, view } = useFlash();
+
+  const refresh = () => {
+    reload();
+    onChange();
+  };
+
+  const create = (e) => {
+    e.preventDefault();
+    s.submit(async () => {
+      await api.post(`/projects/${projectId}/tasks`, {
+        title: form.title,
+        assignee_id: form.assignee_id ? Number(form.assignee_id) : null,
+        due_date: form.due_date || null,
+      });
+      setForm({ title: '', assignee_id: '', due_date: '' });
+      refresh();
+    });
+  };
+
+  const update = async (t, changes) => {
+    await run(() => api.put(`/projects/${projectId}/tasks/${t.id}`, changes));
+    refresh();
+  };
+
+  const columns = [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']];
+
+  return (
+    <div>
+      {view}
+      <form className="card add-row" onSubmit={create} noValidate>
+        <Alert>{s.error}</Alert>
+        <div className="add-grid">
+          <Field label="New task" error={s.fields.title} required>
+            {(p) => <input {...p} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What needs to be done?" />}
+          </Field>
+          <Field label="Assign to">
+            {(p) => (
+              <select {...p} value={form.assignee_id} onChange={(e) => setForm({ ...form, assignee_id: e.target.value })}>
+                <option value="">Unassigned</option>
+                {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.full_name}</option>)}
+              </select>
+            )}
+          </Field>
+          <Field label="Due date" error={s.fields.due_date}>
+            {(p) => <input {...p} type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />}
+          </Field>
+          <button className="btn btn-primary" disabled={s.busy}>Add task</button>
+        </div>
+      </form>
+      {loading && !data && <Loading />}
+      {error && <LoadError error={error} reload={reload} />}
+      {data && (
+        <div className="board">
+          {columns.map(([status, label]) => {
+            const items = data.tasks.filter((t) => t.status === status);
+            return (
+              <section key={status} className="board-col">
+                <h3>{label} <span className="count">{items.length}</span></h3>
+                {items.map((t) => (
+                  <article key={t.id} className={`task card ${t.status === 'done' ? 'done' : ''}`}>
+                    <label className="check">
+                      <input type="checkbox" checked={t.status === 'done'} onChange={() => update(t, { status: t.status === 'done' ? 'todo' : 'done' })} />
+                      <span className="task-title">{t.title}</span>
+                    </label>
+                    <div className="task-meta small">
+                      <select
+                        aria-label={`Assignee for ${t.title}`}
+                        value={t.assignee_id || ''}
+                        onChange={(e) => update(t, { assignee_id: e.target.value ? Number(e.target.value) : null })}
+                      >
+                        <option value="">Unassigned</option>
+                        {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.full_name}</option>)}
+                      </select>
+                      {t.due_date && <span className="muted">Due {formatDate(t.due_date)}</span>}
+                    </div>
+                    <div className="task-actions">
+                      <select aria-label={`Status for ${t.title}`} value={t.status} onChange={(e) => update(t, { status: e.target.value })}>
+                        {columns.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                      <button
+                        className="icon-btn danger-text"
+                        aria-label={`Delete ${t.title}`}
+                        onClick={async () => {
+                          if (window.confirm('Delete this task?')) {
+                            await run(() => api.del(`/projects/${projectId}/tasks/${t.id}`));
+                            refresh();
+                          }
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {!items.length && <p className="muted small">Nothing here.</p>}
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
