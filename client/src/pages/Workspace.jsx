@@ -433,3 +433,136 @@ function Files({ projectId }) {
   );
 }
 
+// FR 9.6 Discussions
+function Discussions({ projectId }) {
+  const { data, loading, reload } = useLoad(() => api.get(`/projects/${projectId}/posts`), [projectId]);
+  const [body, setBody] = useState('');
+  const [replyTo, setReplyTo] = useState(null);
+  const [reply, setReply] = useState('');
+  const s = useSubmit();
+
+  const post = (text, parentId) =>
+    s.submit(async () => {
+      await api.post(`/projects/${projectId}/posts`, { body: text, parent_id: parentId || null });
+      if (parentId) {
+        setReply('');
+        setReplyTo(null);
+      } else setBody('');
+      reload();
+    });
+
+  const posts = data?.posts || [];
+  const top = posts.filter((p) => !p.parent_id);
+  const replies = (id) => posts.filter((p) => p.parent_id === id);
+
+  return (
+    <div className="narrow-left">
+      <form className="card add-row" onSubmit={(e) => { e.preventDefault(); post(body); }} noValidate>
+        <Alert>{s.error}</Alert>
+        <Field label="Start a discussion" error={!replyTo ? s.fields.body : undefined}>
+          {(p) => <textarea {...p} rows={3} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Share an update or ask the team a question" />}
+        </Field>
+        <button className="btn btn-primary" disabled={s.busy}>Post</button>
+      </form>
+      {loading && !data && <Loading />}
+      {data && !top.length && <Empty title="No messages yet. Start the conversation." />}
+      <div className="stack">
+        {top.map((p) => (
+          <article key={p.id} className="card post">
+            <header><strong>{p.author_name}</strong> <span className="small muted">{formatDateTime(p.created_at)}</span></header>
+            <p className="prose">{p.body}</p>
+            <div className="replies">
+              {replies(p.id).map((r) => (
+                <div key={r.id} className="reply">
+                  <header><strong>{r.author_name}</strong> <span className="small muted">{formatDateTime(r.created_at)}</span></header>
+                  <p className="prose">{r.body}</p>
+                </div>
+              ))}
+            </div>
+            {replyTo === p.id ? (
+              <form className="reply-form" onSubmit={(e) => { e.preventDefault(); post(reply, p.id); }}>
+                <label htmlFor={`reply-${p.id}`} className="sr-only">Your reply</label>
+                <textarea id={`reply-${p.id}`} rows={2} value={reply} onChange={(e) => setReply(e.target.value)} autoFocus />
+                <div className="form-actions">
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReplyTo(null)}>Cancel</button>
+                  <button className="btn btn-primary btn-sm" disabled={s.busy}>Reply</button>
+                </div>
+              </form>
+            ) : (
+              <button className="link-btn" onClick={() => { setReplyTo(p.id); setReply(''); }}>Reply</button>
+            )}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// FR 9.7 Milestones
+function Milestones({ projectId, canManage, onChange }) {
+  const { data, loading, reload } = useLoad(() => api.get(`/projects/${projectId}/milestones`), [projectId]);
+  const [form, setForm] = useState({ title: '', due_date: '' });
+  const s = useSubmit();
+  const { run, view } = useFlash();
+
+  const refresh = () => {
+    reload();
+    onChange();
+  };
+
+  return (
+    <div className="narrow-left">
+      {view}
+      {canManage ? (
+        <form className="card add-row" noValidate onSubmit={(e) => {
+          e.preventDefault();
+          s.submit(async () => {
+            await api.post(`/projects/${projectId}/milestones`, { title: form.title, due_date: form.due_date || null });
+            setForm({ title: '', due_date: '' });
+            refresh();
+          });
+        }}>
+          <Alert>{s.error}</Alert>
+          <div className="add-grid add-grid-3">
+            <Field label="New milestone" error={s.fields.title} required>
+              {(p) => <input {...p} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />}
+            </Field>
+            <Field label="Target date" error={s.fields.due_date}>
+              {(p) => <input {...p} type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />}
+            </Field>
+            <button className="btn btn-primary" disabled={s.busy}>Add milestone</button>
+          </div>
+        </form>
+      ) : (
+        <p className="muted">The project owner sets milestones and checks them off.</p>
+      )}
+      {loading && !data && <Loading />}
+      {data && !data.milestones.length && <Empty title="No milestones yet." />}
+      <ol className="timeline">
+        {data?.milestones.map((m) => (
+          <li key={m.id} className={m.done ? 'done' : ''}>
+            <span className="dot" aria-hidden="true" />
+            <div className="timeline-body">
+              {canManage ? (
+                <label className="check">
+                  <input type="checkbox" checked={m.done} onChange={async () => { await run(() => api.post(`/projects/${projectId}/milestones/${m.id}/toggle`)); refresh(); }} />
+                  <strong>{m.title}</strong>
+                </label>
+              ) : (
+                <strong>{m.done ? '✓ ' : ''}{m.title}</strong>
+              )}
+              <div className="small muted">
+                {m.due_date && `Target ${formatDate(m.due_date)}`}{m.done && ` · completed ${formatDate(m.done_at)}`}
+              </div>
+            </div>
+            {canManage && (
+              <button className="icon-btn danger-text" aria-label={`Delete ${m.title}`} onClick={async () => {
+                if (window.confirm('Delete this milestone?')) { await run(() => api.del(`/projects/${projectId}/milestones/${m.id}`)); refresh(); }
+              }}>×</button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
