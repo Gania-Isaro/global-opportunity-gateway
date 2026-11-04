@@ -316,3 +316,120 @@ function Tasks({ projectId, members, onChange }) {
   );
 }
 
+// FR 9.4 Research notes and links
+function Research({ projectId }) {
+  const { user } = useAuth();
+  const { data, loading, reload } = useLoad(() => api.get(`/projects/${projectId}/notes`), [projectId]);
+  const [form, setForm] = useState({ title: '', body: '', link: '' });
+  const s = useSubmit();
+  const { run, view } = useFlash();
+
+  const create = (e) => {
+    e.preventDefault();
+    s.submit(async () => {
+      await api.post(`/projects/${projectId}/notes`, { ...form, link: form.link || null });
+      setForm({ title: '', body: '', link: '' });
+      reload();
+    });
+  };
+
+  return (
+    <div className="ws-grid">
+      <form className="card panel" onSubmit={create} noValidate>
+        <h2>Add a research note</h2>
+        <Alert>{s.error}</Alert>
+        <Field label="Title" error={s.fields.title} required>
+          {(p) => <input {...p} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />}
+        </Field>
+        <Field label="Findings" error={s.fields.body}>
+          {(p) => <textarea {...p} rows={5} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />}
+        </Field>
+        <Field label="Link" error={s.fields.link} hint="Optional source, for example https://...">
+          {(p) => <input {...p} type="url" value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} />}
+        </Field>
+        <button className="btn btn-primary" disabled={s.busy}>Save note</button>
+      </form>
+      <section>
+        {view}
+        {loading && !data && <Loading />}
+        {data && !data.notes.length && <Empty title="No research notes yet." />}
+        <div className="stack">
+          {data?.notes.map((n) => (
+            <article key={n.id} className="card note">
+              <h3>{n.title}</h3>
+              <p className="small muted">{n.author_name} · {formatDateTime(n.created_at)}</p>
+              {n.body && <p className="prose">{n.body}</p>}
+              {n.link && <a href={n.link} target="_blank" rel="noopener noreferrer">{n.link}</a>}
+              {n.author_id === user.id && (
+                <button className="link-btn danger-link" onClick={async () => { await run(() => api.del(`/projects/${projectId}/notes/${n.id}`)); reload(); }}>
+                  Delete
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// FR 9.5 Files (up to 10 MB)
+function Files({ projectId }) {
+  const { data, loading, reload } = useLoad(() => api.get(`/projects/${projectId}/files`), [projectId]);
+  const input = useRef(null);
+  const s = useSubmit();
+  const { run, view } = useFlash();
+
+  const upload = (e) => {
+    e.preventDefault();
+    const file = input.current.files[0];
+    if (!file) return s.setError('Choose a file to upload.');
+    if (file.size > 10 * 1024 * 1024) return s.setError('File is too large. The maximum size is 10 MB.');
+    s.submit(async () => {
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.post(`/projects/${projectId}/files`, fd);
+      input.current.value = '';
+      reload();
+    });
+  };
+
+  return (
+    <div>
+      {view}
+      <form className="card add-row" onSubmit={upload}>
+        <Alert>{s.error}</Alert>
+        <div className="upload-row">
+          <label htmlFor="file-input">Upload a file <span className="muted small">(PDF, Office, images, text or CSV, up to 10 MB)</span></label>
+          <input id="file-input" ref={input} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.txt,.csv" />
+          <button className="btn btn-primary" disabled={s.busy}>{s.busy ? 'Uploading...' : 'Upload'}</button>
+        </div>
+      </form>
+      {loading && !data && <Loading />}
+      {data && !data.files.length && <Empty title="No files shared yet." />}
+      {data?.files.length > 0 && (
+        <div className="table-wrap card">
+          <table className="table">
+            <thead><tr><th scope="col">File</th><th scope="col">Size</th><th scope="col">Uploaded by</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              {data.files.map((f) => (
+                <tr key={f.id}>
+                  <td data-label="File"><a href={fileUrl(`/projects/${projectId}/files/${f.id}`)}>{f.filename}</a></td>
+                  <td data-label="Size">{formatSize(f.size)}</td>
+                  <td data-label="Uploaded by">{f.uploader_name} <span className="muted small">{formatDate(f.created_at)}</span></td>
+                  <td className="row-actions">
+                    <a className="btn btn-outline btn-sm" href={fileUrl(`/projects/${projectId}/files/${f.id}`)}>Download</a>
+                    <button className="btn btn-ghost btn-sm danger-text" onClick={async () => {
+                      if (window.confirm('Delete this file?')) { await run(() => api.del(`/projects/${projectId}/files/${f.id}`)); reload(); }
+                    }}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
