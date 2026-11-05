@@ -242,3 +242,91 @@ export function AdminReports() {
   );
 }
 
+// FR 12.4 Audit log (read only)
+export function AdminAudit() {
+  const { data, error, loading, reload } = useLoad(() => api.get('/admin/audit'), []);
+  const labels = {
+    verify_organisation: 'Verified organisation',
+    reject_organisation: 'Rejected organisation',
+    suspend_user: 'Suspended account',
+    unlock_user: 'Unlocked account',
+    remove_challenge: 'Removed challenge',
+    dismiss_report: 'Dismissed report',
+  };
+  return (
+    <div className="container">
+      <PageHeader title="Audit log" subtitle="Every administrator decision is recorded here. Entries cannot be edited or deleted." />
+      {loading && <Loading />}
+      {error && <LoadError error={error} reload={reload} />}
+      {data && !data.entries.length && <Empty title="No administrator actions yet." />}
+      {data?.entries.length > 0 && (
+        <div className="table-wrap card">
+          <table className="table">
+            <thead><tr><th scope="col">When</th><th scope="col">Administrator</th><th scope="col">Action</th><th scope="col">Details</th></tr></thead>
+            <tbody>
+              {data.entries.map((e) => (
+                <tr key={e.id}>
+                  <td data-label="When">{formatDateTime(e.created_at)}</td>
+                  <td data-label="Administrator">{e.admin_name}</td>
+                  <td data-label="Action">{labels[e.action] || e.action}</td>
+                  <td data-label="Details">{e.details}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// FR 12.5 Pilot report against the SMART targets
+export function AdminPilotReport() {
+  const { data, error, loading, reload } = useLoad(() => api.get('/admin/pilot-report'), []);
+
+  const download = () => {
+    const rows = [['Measure', 'Target', 'Actual', 'Met', 'Note'], ...data.targets.map((t) => [t.label, t.target, t.actual, t.met ? 'Yes' : 'No', t.note || ''])];
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gog-pilot-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="container">
+      <PageHeader
+        title="Pilot report"
+        subtitle="Progress against the six month pilot targets for Kigali."
+        actions={data && (
+          <>
+            <button className="btn btn-outline" onClick={() => window.print()}>Print</button>
+            <button className="btn btn-primary" onClick={download}>Download CSV</button>
+          </>
+        )}
+      />
+      {loading && <Loading />}
+      {error && <LoadError error={error} reload={reload} />}
+      {data && (
+        <>
+          <p className="small muted">Generated {formatDateTime(data.generated_at)}</p>
+          <div className="report-grid">
+            {data.targets.map((t) => {
+              const pct = t.lowerIsBetter ? (t.met ? 100 : 0) : Math.min(100, Math.round((t.actual / t.target) * 100));
+              return (
+                <article key={t.label} className={`card report-card ${t.met ? 'met' : ''}`}>
+                  <h2>{t.label}</h2>
+                  <p className="report-num"><strong>{t.actual}</strong> <span className="muted">/ target {t.lowerIsBetter ? `${t.target}` : `${t.target}+`}</span></p>
+                  <div className="progress" aria-hidden="true"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
+                  <p className="small">{t.met ? 'Target met' : 'Not yet met'}{t.note && ` · ${t.note}`}</p>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
