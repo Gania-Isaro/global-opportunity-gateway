@@ -117,3 +117,128 @@ export function AdminOrganisations() {
   );
 }
 
+// FR 12.1 Suspend or unlock accounts
+export function AdminUsers() {
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const { data, error, loading, reload } = useLoad(() => api.get(`/admin/users?q=${encodeURIComponent(search)}`), [search]);
+  const { run, view } = useFlash(reload);
+  const [banning, setBanning] = useState(null);
+
+  return (
+    <div className="container">
+      <PageHeader title="Users" subtitle="Temporarily suspend accounts that break platform rules, or unlock them." />
+      {view}
+      <form className="search-row card filters" onSubmit={(e) => { e.preventDefault(); setSearch(q); }} role="search">
+        <label htmlFor="user-search" className="sr-only">Search users</label>
+        <input id="user-search" type="search" placeholder="Search by name or email" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn btn-primary">Search</button>
+      </form>
+      {loading && !data && <Loading />}
+      {error && <LoadError error={error} reload={reload} />}
+      {data && (
+        <div className="table-wrap card">
+          <table className="table">
+            <thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Email confirmed</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              {data.users.map((u) => (
+                <tr key={u.id}>
+                  <td data-label="Name"><Link to={`/users/${u.id}`}>{u.full_name}</Link><div className="small muted">{u.email}</div></td>
+                  <td data-label="Role">{u.role === 'owner' ? 'Challenge owner' : u.role === 'admin' ? 'Administrator' : 'Participant'}</td>
+                  <td data-label="Email confirmed">{u.email_verified ? 'Yes' : 'No'}</td>
+                  <td data-label="Status">{u.banned ? <span className="badge badge-rejected">Suspended</span> : <span className="badge badge-active">Active</span>}</td>
+                  <td className="row-actions">
+                    {u.role !== 'admin' && (u.banned
+                      ? <button className="btn btn-outline btn-sm" onClick={() => run(() => api.post(`/admin/users/${u.id}/ban`, {}))}>Unlock</button>
+                      : <button className="btn btn-ghost btn-sm danger-text" onClick={() => setBanning(u)}>Suspend</button>)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {banning && (
+        <ReasonModal
+          title={`Suspend ${banning.full_name}`}
+          label="Reason (recorded in the audit log)"
+          danger
+          onCancel={() => setBanning(null)}
+          onSubmit={async (reason) => {
+            await run(() => api.post(`/admin/users/${banning.id}/ban`, { reason }));
+            setBanning(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// FR 12.2 Remove content, FR 12.3 Review reports
+export function AdminReports() {
+  const { data, error, loading, reload } = useLoad(() => api.get('/admin/reports'), []);
+  const { run, view } = useFlash(reload);
+  const [removing, setRemoving] = useState(null);
+  const [banning, setBanning] = useState(null);
+
+  return (
+    <div className="container">
+      <PageHeader title="Reported content" subtitle="Challenges and accounts reported by users." />
+      {view}
+      {loading && !data && <Loading />}
+      {error && <LoadError error={error} reload={reload} />}
+      {data && !data.reports.length && <Empty title="No reports. Everything looks fine." />}
+      <div className="stack">
+        {data?.reports.map((r) => (
+          <article key={r.id} className="card row-card">
+            <div className="row-main">
+              <h3>
+                {r.target_type === 'challenge'
+                  ? <>Challenge: <Link to={`/challenges/${r.target_id}`}>{r.target_name || 'Deleted challenge'}</Link></>
+                  : <>Account: <Link to={`/users/${r.target_id}`}>{r.target_name || 'Deleted user'}</Link></>}
+              </h3>
+              <p>{r.reason}</p>
+              <p className="small muted">Reported by {r.reporter_name || 'a user'} · {formatDateTime(r.created_at)}</p>
+            </div>
+            <div className="row-status"><StatusBadge status={r.status} /></div>
+            {r.status === 'open' && (
+              <div className="row-actions">
+                {r.target_type === 'challenge'
+                  ? <button className="btn btn-danger btn-sm" onClick={() => setRemoving(r)}>Remove challenge</button>
+                  : <button className="btn btn-danger btn-sm" onClick={() => setBanning(r)}>Suspend account</button>}
+                <button className="btn btn-ghost btn-sm" onClick={() => run(() => api.post(`/admin/reports/${r.id}/dismiss`))}>Dismiss</button>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+      {removing && (
+        <ReasonModal
+          title="Remove challenge"
+          label="Reason (sent to the owner and recorded in the audit log)"
+          danger
+          onCancel={() => setRemoving(null)}
+          onSubmit={async (reason) => {
+            await run(() => api.post(`/admin/challenges/${removing.target_id}/remove`, { reason }));
+            setRemoving(null);
+          }}
+        />
+      )}
+      {banning && (
+        <ReasonModal
+          title="Suspend account"
+          label="Reason (recorded in the audit log)"
+          danger
+          onCancel={() => setBanning(null)}
+          onSubmit={async (reason) => {
+            const ok = await run(() => api.post(`/admin/users/${banning.target_id}/ban`, { reason }));
+            if (ok) await api.post(`/admin/reports/${banning.id}/dismiss`).catch(() => {});
+            setBanning(null);
+            reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
