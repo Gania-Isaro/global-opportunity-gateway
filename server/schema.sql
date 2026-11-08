@@ -75,3 +75,41 @@ CREATE TABLE IF NOT EXISTS challenges (
   closed_at     TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS applications (
+  id              SERIAL PRIMARY KEY,
+  challenge_id    INT NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
+  participant_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  motivation      TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'submitted'
+                  CHECK (status IN ('submitted', 'under_review', 'accepted', 'rejected', 'withdrawn')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at      TIMESTAMPTZ,
+  UNIQUE (challenge_id, participant_id) -- BR 3 / FR 6.2
+);
+
+CREATE TABLE IF NOT EXISTS invitations (
+  id              SERIAL PRIMARY KEY,
+  application_id  INT UNIQUE NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+  status          TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'confirmed', 'declined')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  responded_at    TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id            SERIAL PRIMARY KEY,
+  challenge_id  INT UNIQUE NOT NULL REFERENCES challenges(id) ON DELETE CASCADE, -- BR 6 / FR 8.4
+  owner_id      INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at  TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS project_members (
+  project_id  INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL DEFAULT 'Member',
+  joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, user_id)
+);
+
