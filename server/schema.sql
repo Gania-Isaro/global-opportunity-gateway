@@ -156,3 +156,56 @@ CREATE TABLE IF NOT EXISTS discussion_posts (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS milestones (
+  id          SERIAL PRIMARY KEY,
+  project_id  INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  due_date    DATE,
+  done        BOOLEAN NOT NULL DEFAULT FALSE,
+  done_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  link        TEXT,
+  read        BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id           SERIAL PRIMARY KEY,
+  reporter_id  INT REFERENCES users(id) ON DELETE SET NULL,
+  target_type  TEXT NOT NULL CHECK (target_type IN ('challenge', 'user')),
+  target_id    INT NOT NULL,
+  reason       TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'dismissed')),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Append only. The app never updates or deletes rows here (NFR 11, BR 10).
+CREATE TABLE IF NOT EXISTS audit_log (
+  id           SERIAL PRIMARY KEY,
+  admin_id     INT REFERENCES users(id) ON DELETE SET NULL,
+  action       TEXT NOT NULL,
+  target_type  TEXT NOT NULL,
+  target_id    INT,
+  details      TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS email_outbox (
+  id          SERIAL PRIMARY KEY,
+  to_email    TEXT NOT NULL,
+  subject     TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  delivered   BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_challenges_status ON challenges(status);
+CREATE INDEX IF NOT EXISTS idx_applications_participant ON applications(participant_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
