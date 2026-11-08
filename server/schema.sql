@@ -113,3 +113,46 @@ CREATE TABLE IF NOT EXISTS project_members (
   PRIMARY KEY (project_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS tasks (
+  id           SERIAL PRIMARY KEY,
+  project_id   INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  assignee_id  INT REFERENCES users(id) ON DELETE SET NULL,
+  status       TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+  due_date     DATE,
+  created_by   INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS research_notes (
+  id          SERIAL PRIMARY KEY,
+  project_id  INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  author_id   INT REFERENCES users(id) ON DELETE SET NULL,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  link        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS project_files (
+  id           SERIAL PRIMARY KEY,
+  project_id   INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  uploader_id  INT REFERENCES users(id) ON DELETE SET NULL,
+  filename     TEXT NOT NULL,
+  mime         TEXT NOT NULL,
+  size         INT NOT NULL,
+  data         BYTEA NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS discussion_posts (
+  id          SERIAL PRIMARY KEY,
+  project_id  INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  author_id   INT REFERENCES users(id) ON DELETE SET NULL,
+  parent_id   INT REFERENCES discussion_posts(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
