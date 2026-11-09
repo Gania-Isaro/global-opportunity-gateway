@@ -69,3 +69,24 @@ export function validate(body, rules) {
   return out;
 }
 
+export function idParam(value) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id < 1) fail(404, 'Not found.');
+  return id;
+}
+
+// File types allowed for uploads (Section 5.3).
+export const ALLOWED_MIME = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'text/plain',
+  'text/csv',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+]);
