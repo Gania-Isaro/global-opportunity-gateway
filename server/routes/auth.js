@@ -35,3 +35,30 @@ async function useToken(token, kind) {
   return row.user_id;
 }
 
+async function sendConfirmation(user) {
+  const token = await issueToken(user.id, 'confirm', 60 * 24);
+  const link = `${config.appUrl}/confirm-email?token=${token}`;
+  await sendEmail(
+    user.email,
+    'Confirm your GOG account',
+    `Welcome to GOG.\n\nPlease confirm your email address by opening this link:\n${link}\n\nThe link is valid for 24 hours.`
+  );
+  return link;
+}
+
+export async function currentUserPayload(userId) {
+  const user = await one(
+    `SELECT u.id, u.email, u.role, u.email_verified, p.full_name,
+            o.id AS org_id, o.name AS org_name, o.status AS org_status
+       FROM users u
+       LEFT JOIN profiles p ON p.user_id = u.id
+       LEFT JOIN organisations o ON o.rep_user_id = u.id
+      WHERE u.id = $1`,
+    [userId]
+  );
+  if (!user) return null;
+  const unread = await one('SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND NOT read', [userId]);
+  const status = await profileStatus(userId);
+  return { ...user, unread_notifications: unread.n, profile_complete: status.complete };
+}
+
