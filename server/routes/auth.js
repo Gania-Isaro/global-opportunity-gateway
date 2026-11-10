@@ -62,3 +62,37 @@ export async function currentUserPayload(userId) {
   return { ...user, unread_notifications: unread.n, profile_complete: status.complete };
 }
 
+// FR 1.1 Register
+router.post('/register', async (req, res) => {
+  const data = validate(req.body, {
+    fullName: { required: true, label: 'Full name', max: 120 },
+    email: { required: true, type: 'email' },
+    password: { required: true, type: 'password' },
+    role: { required: true, type: 'enum', values: ['participant', 'owner'], label: 'Account type' },
+  });
+  const exists = await one('SELECT id FROM users WHERE email = $1', [data.email]);
+  if (exists) fail(400, 'Please fix the highlighted fields.', { email: 'An account with this email already exists.' });
+
+  const hash = await bcrypt.hash(data.password, 12); // NFR 2
+  const user = await tx(async (c) => {
+    const { rows } = await c.query(
+      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email',
+      [data.email, hash, data.role]
+    );
+    await c.query('INSERT INTO profiles (user_id, full_name) VALUES ($1, $2)', [rows[0].id, data.fullName]);
+    return rows[0];
+  });
+  const link = await sendConfirmation(user);
+  res.status(201).json({
+    message: 'Account created. Check your email for a confirmation link.',
+    demoLink: config.demoMode ? link : undefined,
+  });
+});
+
+// FR 1.2 Confirm email
+router.post('/confirm', async (req, res) => {
+  const userId = await useToken(req.body?.token, 'confirm');
+  await query('UPDATE users SET email_verified = TRUE WHERE id = $1', [userId]);
+  res.json({ message: 'Your email is confirmed. You can now log in.' });
+});
+
