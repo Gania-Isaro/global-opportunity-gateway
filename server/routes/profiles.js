@@ -42,3 +42,47 @@ router.put('/profile', requireAuth, async (req, res) => {
   res.json({ message: 'Profile saved.', status: await profileStatus(req.user.id) });
 });
 
+// FR 2.3 / BR 8 Restricted profile visibility.
+// The full profile is shown only to the user, an admin, or the owner of a
+// challenge the user has applied to. Everyone else sees name and skills.
+router.get('/users/:id', requireAuth, async (req, res) => {
+  const id = idParam(req.params.id);
+  const p = await one(
+    `SELECT p.*, u.role, u.created_at AS member_since, o.name AS org_name, o.status AS org_status
+       FROM profiles p JOIN users u ON u.id = p.user_id
+       LEFT JOIN organisations o ON o.rep_user_id = u.id
+      WHERE p.user_id = $1`,
+    [id]
+  );
+  if (!p) fail(404, 'User not found.');
+
+  let full = req.user.id === id || req.user.role === 'admin';
+  if (!full) {
+    const link = await one(
+      `SELECT 1 FROM applications a JOIN challenges c ON c.id = a.challenge_id
+        WHERE a.participant_id = $1 AND c.owner_id = $2 LIMIT 1`,
+      [id, req.user.id]
+    );
+    const teammate = await one(
+      `SELECT 1 FROM project_members a JOIN project_members b ON a.project_id = b.project_id
+        WHERE a.user_id = $1 AND b.user_id = $2 LIMIT 1`,
+      [id, req.user.id]
+    );
+    full = Boolean(link || teammate);
+  }
+
+  if (full) return res.json({ profile: p, restricted: false });
+  res.json({
+    profile: {
+      user_id: p.user_id,
+      full_name: p.full_name,
+      skills: p.skills,
+      role: p.role,
+      org_name: p.org_status === 'verified' ? p.org_name : null,
+      org_status: p.org_status,
+    },
+    restricted: true,
+  });
+});
+
+export default router;
