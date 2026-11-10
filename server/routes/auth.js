@@ -96,3 +96,14 @@ router.post('/confirm', async (req, res) => {
   res.json({ message: 'Your email is confirmed. You can now log in.' });
 });
 
+router.post('/resend-confirmation', async (req, res) => {
+  const { email } = validate(req.body, { email: { required: true, type: 'email' } });
+  const user = await one('SELECT id, email, email_verified FROM users WHERE email = $1', [email]);
+  let link;
+  if (user && !user.email_verified) link = await sendConfirmation(user);
+  res.json({
+    message: 'If that account exists and is not confirmed yet, a new link has been sent.',
+    demoLink: config.demoMode ? link : undefined,
+  });
+});
+
