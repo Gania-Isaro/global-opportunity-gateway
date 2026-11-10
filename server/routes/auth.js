@@ -107,3 +107,40 @@ router.post('/resend-confirmation', async (req, res) => {
   });
 });
 
+// FR 1.3 Log in
+router.post('/login', async (req, res) => {
+  const { email, password } = validate(req.body, {
+    email: { required: true, type: 'email' },
+    password: { required: true },
+  });
+  const user = await one('SELECT * FROM users WHERE email = $1', [email]);
+  const generic = 'Email or password is incorrect.';
+  if (!user) fail(401, generic);
+  if (user.banned) fail(403, 'This account has been suspended. Contact the GOG team for help.');
+  if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    fail(423, `Too many failed attempts. This account is locked for ${config.lockMinutes} minutes.`);
+  }
+
+  const ok = await bcrypt.compare(password, user.password_hash);
+  if (!ok) {
+    const failed = user.failed_logins + 1;
+    if (failed >= config.maxFailedLogins) {
+      await query(
+        `UPDATE users SET failed_logins = 0, locked_until = now() + ($2 || ' minutes')::interval WHERE id = $1`,
+        [user.id, String(config.lockMinutes)]
+      );
+      fail(423, `Too many failed attempts. This account is locked for ${config.lockMinutes} minutes.`);
+    }
+    await query('UPDATE users SET failed_logins = $2 WHERE id = $1', [user.id, failed]);
+    fail(401, generic);
+  }
+  if (!user.email_verified) {
+    fail(403, 'Please confirm your email address before logging in. Check your inbox for the link.');
+  }
+
+  await query('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [user.id]);
+  await new Promise((resolve, reject) => req.session.regenerate((e) => (e ? reject(e) : resolve())));
+  req.session.userId = user.id;
+  res.json({ user: await currentUserPayload(user.id) });
+});
+
