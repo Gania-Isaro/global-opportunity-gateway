@@ -144,3 +144,51 @@ router.post('/login', async (req, res) => {
   res.json({ user: await currentUserPayload(user.id) });
 });
 
+router.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('gog.sid');
+    res.json({ message: 'You have been logged out.' });
+  });
+});
+
+router.get('/me', async (req, res) => {
+  if (!req.user) return res.json({ user: null });
+  res.json({ user: await currentUserPayload(req.user.id) });
+});
+
+// FR 1.4 Reset password
+router.post('/forgot', async (req, res) => {
+  const { email } = validate(req.body, { email: { required: true, type: 'email' } });
+  const user = await one('SELECT id, email FROM users WHERE email = $1', [email]);
+  let link;
+  if (user) {
+    const token = await issueToken(user.id, 'reset', 30);
+    link = `${config.appUrl}/reset-password?token=${token}`;
+    await sendEmail(
+      user.email,
+      'Reset your GOG password',
+      `Someone asked to reset the password for this account.\n\nOpen this link to choose a new password:\n${link}\n\nThe link expires in 30 minutes. If you did not ask for this, you can ignore this email.`
+    );
+  }
+  res.json({
+    message: 'If an account exists for that email, a reset link has been sent.',
+    demoLink: config.demoMode ? link : undefined,
+  });
+});
+
+router.post('/reset', async (req, res) => {
+  const { password } = validate(req.body, { password: { required: true, type: 'password' } });
+  const userId = await useToken(req.body?.token, 'reset');
+  const hash = await bcrypt.hash(password, 12);
+  await query(
+    'UPDATE users SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1',
+    [userId, hash]
+  );
+  res.json({ message: 'Your password has been changed. You can now log in.' });
+});
+
+router.get('/session', requireAuth, (req, res) => {
+  res.json({ expiresAt: req.session.cookie.expires });
+});
+
+export default router;
