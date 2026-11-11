@@ -182,3 +182,43 @@ router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
   res.json({ message: response === 'confirmed' ? 'You confirmed the invitation.' : 'You declined the invitation.' });
 });
 
+// FR 8.1 Form team and FR 8.2 create the project (BR 5 at least one member, BR 6 one project per challenge)
+router.post('/challenges/:id/project', requireAuth, async (req, res) => {
+  const c = await ownedChallenge(idParam(req.params.id), req.user);
+  const d = validate(req.body, {
+    name: { required: true, label: 'Project name', max: 160 },
+    members: { type: 'list', default: [] },
+  });
+  const ids = d.members.map(Number).filter(Number.isInteger);
+  const confirmed = await many(
+    `SELECT a.participant_id FROM applications a JOIN invitations i ON i.application_id = a.id
+      WHERE a.challenge_id = $1 AND i.status = 'confirmed'`,
+    [c.id]
+  );
+  const allowed = new Set(confirmed.map((r) => r.participant_id));
+  const chosen = ids.length ? ids.filter((id) => allowed.has(id)) : [...allowed];
+  if (chosen.length < 1) {
+    fail(400, 'At least one participant must confirm their invitation before you can form a team.');
+  }
+  if (ids.some((id) => !allowed.has(id))) fail(400, 'Only participants who confirmed their invitation can join the team.');
+
+  const project = await tx(async (cl) => {
+    const exists = await cl.query('SELECT id FROM projects WHERE challenge_id = $1', [c.id]);
+    if (exists.rowCount) fail(400, 'A project already exists for this challenge.');
+    const { rows: [p] } = await cl.query(
+      'INSERT INTO projects (challenge_id, owner_id, name) VALUES ($1, $2, $3) RETURNING *',
+      [c.id, req.user.id, d.name]
+    );
+    await cl.query("INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'Project owner')", [p.id, req.user.id]);
+    for (const uid of chosen) {
+      await cl.query("INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'Member')", [p.id, uid]);
+    }
+    return p;
+  });
+  for (const uid of chosen) {
+    await notify(uid, 'team_formed', `The team for "${c.title}" has been formed. Your private workspace is ready.`, `/projects/${project.id}`);
+  }
+  res.status(201).json({ project, message: 'Team formed and project workspace created.' });
+});
+
+export default router;
