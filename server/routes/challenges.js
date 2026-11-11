@@ -173,3 +173,29 @@ router.put('/challenges/:id', requireVerified, async (req, res) => {
   res.json({ challenge: updated, message: 'Challenge saved.' });
 });
 
+// FR 4.2 Publish
+router.post('/challenges/:id/publish', requireVerified, async (req, res) => {
+  const c = await loadOwned(req);
+  await assertCanOwn(req.user);
+  if (c.status !== 'draft') fail(400, 'Only drafts can be published.');
+  assertFutureDeadline(c.deadline);
+  await query("UPDATE challenges SET status='published', published_at=now() WHERE id=$1", [c.id]);
+  res.json({ message: 'Challenge published.' });
+});
+
+// FR 4.3 Close (BR 9: a closed challenge accepts no more applications)
+router.post('/challenges/:id/close', requireVerified, async (req, res) => {
+  const c = await loadOwned(req);
+  if (c.status !== 'published') fail(400, 'Only published challenges can be closed.');
+  await query("UPDATE challenges SET status='closed', closed_at=now() WHERE id=$1", [c.id]);
+  res.json({ message: 'Challenge closed. It no longer accepts applications.' });
+});
+
+router.delete('/challenges/:id', requireVerified, async (req, res) => {
+  const c = await loadOwned(req);
+  if (c.status !== 'draft') fail(400, 'Only drafts can be deleted. Close a published challenge instead.');
+  await query('DELETE FROM challenges WHERE id = $1', [c.id]);
+  res.json({ message: 'Draft deleted.' });
+});
+
+export default router;
