@@ -60,3 +60,41 @@ async function loadOwned(req) {
   return c;
 }
 
+// FR 5.1 List, FR 5.2 Search, FR 5.3 Filter
+router.get('/challenges', async (req, res) => {
+  await autoCloseChallenges();
+  const where = [];
+  const params = [];
+  const status = req.query.status === 'closed' ? 'closed' : req.query.status === 'all' ? null : 'published';
+  if (status) {
+    params.push(status);
+    where.push(`c.status = $${params.length}`);
+  } else {
+    where.push("c.status IN ('published', 'closed')");
+  }
+  if (req.query.q) {
+    params.push(`%${String(req.query.q).trim()}%`);
+    const n = params.length;
+    where.push(`(c.title ILIKE $${n} OR c.description ILIKE $${n} OR c.outcome ILIKE $${n} OR array_to_string(c.skills, ' ') ILIKE $${n})`);
+  }
+  if (req.query.sector) {
+    params.push(String(req.query.sector));
+    where.push(`c.sector = $${params.length}`);
+  }
+  if (req.query.skill) {
+    params.push(String(req.query.skill).toLowerCase());
+    where.push(`EXISTS (SELECT 1 FROM unnest(c.skills) s WHERE lower(s) = $${params.length})`);
+  }
+  if (req.query.deadline_before && /^\d{4}-\d{2}-\d{2}$/.test(req.query.deadline_before)) {
+    params.push(req.query.deadline_before);
+    where.push(`c.deadline <= $${params.length}`);
+  }
+  if (req.query.verified === 'true') where.push("o.status = 'verified'");
+
+  const rows = await many(
+    `${CHALLENGE_SELECT} WHERE ${where.join(' AND ')} ORDER BY c.deadline ASC, c.id DESC LIMIT 200`,
+    params
+  );
+  res.json({ challenges: rows });
+});
+
