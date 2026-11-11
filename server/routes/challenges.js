@@ -98,3 +98,45 @@ router.get('/challenges', async (req, res) => {
   res.json({ challenges: rows });
 });
 
+// Values for the filter dropdowns.
+router.get('/challenges/meta', async (req, res) => {
+  const skills = await many(
+    `SELECT DISTINCT s AS skill FROM challenges, unnest(skills) s
+      WHERE status IN ('published', 'closed') ORDER BY 1`
+  );
+  res.json({ sectors: SECTORS, skills: skills.map((r) => r.skill) });
+});
+
+router.get('/challenges/mine', requireAuth, async (req, res) => {
+  await autoCloseChallenges();
+  const rows = await many(
+    `SELECT x.*, (SELECT id FROM projects WHERE challenge_id = x.id) AS project_id,
+            (SELECT count(*)::int FROM applications a
+              WHERE a.challenge_id = x.id AND a.status IN ('submitted', 'under_review')) AS pending_count
+       FROM (${CHALLENGE_SELECT} WHERE c.owner_id = $1) x
+      ORDER BY x.created_at DESC`,
+    [req.user.id]
+  );
+  res.json({ challenges: rows });
+});
+
+// FR 5.4 View details
+router.get('/challenges/:id', async (req, res) => {
+  await autoCloseChallenges();
+  const c = await one(`${CHALLENGE_SELECT} WHERE c.id = $1`, [idParam(req.params.id)]);
+  const isOwner = req.user && c && c.owner_id === req.user.id;
+  const isAdmin = req.user?.role === 'admin';
+  if (!c || (!['published', 'closed'].includes(c.status) && !isOwner && !isAdmin)) {
+    fail(404, 'Challenge not found.');
+  }
+  let myApplication = null;
+  if (req.user) {
+    myApplication = await one(
+      'SELECT id, status, created_at FROM applications WHERE challenge_id = $1 AND participant_id = $2',
+      [c.id, req.user.id]
+    );
+  }
+  const project = await one('SELECT id, name, status FROM projects WHERE challenge_id = $1', [c.id]);
+  res.json({ challenge: c, isOwner: Boolean(isOwner), myApplication, project });
+});
+
