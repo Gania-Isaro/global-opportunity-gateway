@@ -144,3 +144,41 @@ router.post('/applications/:id/invite', requireAuth, async (req, res) => {
   res.json({ message: 'Invitation sent.' });
 });
 
+router.get('/invitations/mine', requireAuth, async (req, res) => {
+  const rows = await many(
+    `SELECT i.id, i.status, i.created_at, i.responded_at,
+            c.id AS challenge_id, c.title AS challenge_title, p.full_name AS owner_name
+       FROM invitations i
+       JOIN applications a ON a.id = i.application_id
+       JOIN challenges c ON c.id = a.challenge_id
+       JOIN profiles p ON p.user_id = c.owner_id
+      WHERE a.participant_id = $1
+      ORDER BY i.created_at DESC`,
+    [req.user.id]
+  );
+  res.json({ invitations: rows });
+});
+
+// FR 7.4 The participant confirms or declines
+router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
+  const inv = await one(
+    `SELECT i.*, a.participant_id, c.owner_id, c.title, c.id AS challenge_id
+       FROM invitations i JOIN applications a ON a.id = i.application_id
+       JOIN challenges c ON c.id = a.challenge_id WHERE i.id = $1`,
+    [idParam(req.params.id)]
+  );
+  if (!inv || inv.participant_id !== req.user.id) fail(404, 'Invitation not found.');
+  if (inv.status !== 'sent') fail(400, 'You have already responded to this invitation.');
+  const { response } = validate(req.body, {
+    response: { required: true, type: 'enum', values: ['confirmed', 'declined'], label: 'Response' },
+  });
+  await query('UPDATE invitations SET status = $2, responded_at = now() WHERE id = $1', [inv.id, response]);
+  await notify(
+    inv.owner_id,
+    'invitation_response',
+    `${req.user.full_name} ${response === 'confirmed' ? 'confirmed' : 'declined'} the invitation for "${inv.title}".`,
+    `/my-challenges/${inv.challenge_id}/applications`
+  );
+  res.json({ message: response === 'confirmed' ? 'You confirmed the invitation.' : 'You declined the invitation.' });
+});
+
