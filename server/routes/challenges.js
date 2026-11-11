@@ -140,3 +140,36 @@ router.get('/challenges/:id', async (req, res) => {
   res.json({ challenge: c, isOwner: Boolean(isOwner), myApplication, project });
 });
 
+// FR 4.1 Create (saved as a draft or published straight away, FR 4.2)
+router.post('/challenges', requireVerified, async (req, res) => {
+  await assertCanOwn(req.user);
+  const d = validate(req.body, challengeRules);
+  const publish = req.body?.publish === true;
+  if (publish) assertFutureDeadline(d.deadline);
+  const org = await one(
+    "SELECT id FROM organisations WHERE rep_user_id = $1 AND status <> 'rejected'",
+    [req.user.id]
+  );
+  const c = await one(
+    `INSERT INTO challenges (owner_id, org_id, title, description, sector, skills, outcome, deadline, team_size, status, published_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [req.user.id, org?.id || null, d.title, d.description, d.sector, d.skills, d.outcome, d.deadline,
+      d.team_size, publish ? 'published' : 'draft', publish ? new Date() : null]
+  );
+  res.status(201).json({ challenge: c, message: publish ? 'Challenge published.' : 'Draft saved.' });
+});
+
+// FR 4.2 Edit (FR 4.5 owner only)
+router.put('/challenges/:id', requireVerified, async (req, res) => {
+  const c = await loadOwned(req);
+  if (c.status === 'closed') fail(400, 'A closed challenge cannot be edited.');
+  const d = validate(req.body, challengeRules);
+  if (c.status === 'published') assertFutureDeadline(d.deadline);
+  const updated = await one(
+    `UPDATE challenges SET title=$2, description=$3, sector=$4, skills=$5, outcome=$6, deadline=$7, team_size=$8
+      WHERE id=$1 RETURNING *`,
+    [c.id, d.title, d.description, d.sector, d.skills, d.outcome, d.deadline, d.team_size]
+  );
+  res.json({ challenge: updated, message: 'Challenge saved.' });
+});
+
