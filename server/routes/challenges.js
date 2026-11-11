@@ -38,3 +38,25 @@ const challengeRules = {
   team_size: { required: true, type: 'int', min: 1, max: 50, label: 'Team size' },
 };
 
+// BR 1: a verified email and a complete profile are needed to create or publish.
+async function assertCanOwn(user) {
+  if (!user.email_verified) fail(403, 'Please confirm your email address first.');
+  const status = await profileStatus(user.id);
+  if (!status.complete) {
+    fail(403, `Complete your profile before creating a challenge. Missing: ${status.missing.join(', ')}.`);
+  }
+}
+
+function assertFutureDeadline(deadline) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (deadline < today) fail(400, 'Please fix the highlighted fields.', { deadline: 'The deadline cannot be in the past.' });
+}
+
+async function loadOwned(req) {
+  const c = await one('SELECT * FROM challenges WHERE id = $1', [idParam(req.params.id)]);
+  if (!c) fail(404, 'Challenge not found.');
+  if (c.owner_id !== req.user.id) fail(403, 'Only the owner of this challenge can change it.'); // FR 4.5
+  if (c.status === 'removed') fail(400, 'This challenge was removed by an administrator.');
+  return c;
+}
+
