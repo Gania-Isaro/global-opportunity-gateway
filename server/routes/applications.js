@@ -113,3 +113,34 @@ router.get('/challenges/:id/applications', requireAuth, async (req, res) => {
   res.json({ challenge: c, applications, project });
 });
 
+// FR 7.2 Accept or reject, FR 7.3 notify the applicant
+router.post('/applications/:id/decision', requireAuth, async (req, res) => {
+  const a = await applicationForOwner(idParam(req.params.id), req.user);
+  const { decision } = validate(req.body, {
+    decision: { required: true, type: 'enum', values: ['accepted', 'rejected'], label: 'Decision' },
+  });
+  if (!['submitted', 'under_review'].includes(a.status)) fail(400, 'A decision has already been made on this application.');
+  await query('UPDATE applications SET status = $2, decided_at = now() WHERE id = $1', [a.id, decision]);
+  const msg = decision === 'accepted'
+    ? `Good news: your application to "${a.challenge_title}" was accepted. Watch for an invitation to join the team.`
+    : `Your application to "${a.challenge_title}" was not selected this time. Thank you for applying.`;
+  await notify(a.participant_id, 'application_decision', msg, '/applications');
+  res.json({ message: decision === 'accepted' ? 'Application accepted.' : 'Application rejected.' });
+});
+
+// FR 7.4 Send an invitation to an accepted participant
+router.post('/applications/:id/invite', requireAuth, async (req, res) => {
+  const a = await applicationForOwner(idParam(req.params.id), req.user);
+  if (a.status !== 'accepted') fail(400, 'Only accepted applicants can be invited.');
+  const existing = await one('SELECT id FROM invitations WHERE application_id = $1', [a.id]);
+  if (existing) fail(400, 'An invitation has already been sent.');
+  await query('INSERT INTO invitations (application_id) VALUES ($1)', [a.id]);
+  await notify(
+    a.participant_id,
+    'invitation',
+    `You are invited to join the team for "${a.challenge_title}". Please confirm or decline.`,
+    '/invitations'
+  );
+  res.json({ message: 'Invitation sent.' });
+});
+
