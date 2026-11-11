@@ -55,3 +55,34 @@ router.post('/challenges/:id/applications', requireVerified, async (req, res) =>
   res.status(201).json({ application: a, message: 'Application submitted.' });
 });
 
+// FR 6.4 Track status
+router.get('/applications/mine', requireAuth, async (req, res) => {
+  const rows = await many(
+    `SELECT a.id, a.status, a.motivation, a.created_at, a.decided_at,
+            c.id AS challenge_id, c.title AS challenge_title, c.status AS challenge_status, c.deadline,
+            i.id AS invitation_id, i.status AS invitation_status,
+            pm.project_id
+       FROM applications a
+       JOIN challenges c ON c.id = a.challenge_id
+       LEFT JOIN invitations i ON i.application_id = a.id
+       LEFT JOIN projects p ON p.challenge_id = c.id
+       LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = a.participant_id
+      WHERE a.participant_id = $1
+      ORDER BY a.created_at DESC`,
+    [req.user.id]
+  );
+  res.json({ applications: rows });
+});
+
+// FR 6.5 Withdraw
+router.post('/applications/:id/withdraw', requireAuth, async (req, res) => {
+  const a = await one('SELECT a.*, c.owner_id, c.title FROM applications a JOIN challenges c ON c.id = a.challenge_id WHERE a.id = $1', [idParam(req.params.id)]);
+  if (!a || a.participant_id !== req.user.id) fail(404, 'Application not found.');
+  if (!['submitted', 'under_review'].includes(a.status)) {
+    fail(400, 'Only applications that are still waiting for a decision can be withdrawn.');
+  }
+  await query("UPDATE applications SET status = 'withdrawn', decided_at = now() WHERE id = $1", [a.id]);
+  await notify(a.owner_id, 'application_withdrawn', `An applicant withdrew from "${a.title}".`, `/my-challenges/${a.challenge_id}/applications`);
+  res.json({ message: 'Application withdrawn.' });
+});
+
