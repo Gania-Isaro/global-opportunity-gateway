@@ -51,3 +51,43 @@ router.post('/organisations', requireVerified, acceptFiles('documents', 5), asyn
   res.status(201).json({ message: 'Organisation submitted. An administrator will review it.', organisation: org });
 });
 
+router.get('/organisations/mine', requireAuth, async (req, res) => {
+  const org = await one('SELECT * FROM organisations WHERE rep_user_id = $1', [req.user.id]);
+  const documents = org
+    ? await many('SELECT id, filename, mime, size, created_at FROM organisation_documents WHERE org_id = $1', [org.id])
+    : [];
+  res.json({ organisation: org, documents });
+});
+
+// Public organisation page with the Verified badge (FR 3.4).
+router.get('/organisations/:id', async (req, res) => {
+  const id = idParam(req.params.id);
+  const org = await one(
+    'SELECT id, name, sector, description, status, created_at FROM organisations WHERE id = $1',
+    [id]
+  );
+  if (!org) fail(404, 'Organisation not found.');
+  const challenges = await many(
+    `SELECT id, title, sector, deadline, status FROM challenges
+      WHERE org_id = $1 AND status IN ('published', 'closed') ORDER BY created_at DESC`,
+    [id]
+  );
+  res.json({ organisation: { ...org, verified: org.status === 'verified' }, challenges });
+});
+
+// Supporting documents are visible to the representative and administrators only.
+router.get('/organisations/:id/documents/:docId', requireAuth, async (req, res) => {
+  const org = await one('SELECT rep_user_id FROM organisations WHERE id = $1', [idParam(req.params.id)]);
+  if (!org) fail(404, 'Not found.');
+  if (req.user.role !== 'admin' && org.rep_user_id !== req.user.id) fail(403, 'You do not have permission to do that.');
+  const doc = await one(
+    'SELECT filename, mime, data FROM organisation_documents WHERE id = $1 AND org_id = $2',
+    [idParam(req.params.docId), idParam(req.params.id)]
+  );
+  if (!doc) fail(404, 'Document not found.');
+  res.setHeader('Content-Type', doc.mime);
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.filename)}"`);
+  res.send(doc.data);
+});
+
+export default router;
