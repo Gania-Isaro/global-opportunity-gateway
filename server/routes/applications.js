@@ -86,3 +86,30 @@ router.post('/applications/:id/withdraw', requireAuth, async (req, res) => {
   res.json({ message: 'Application withdrawn.' });
 });
 
+// FR 7.1 View applications. Opening the list moves new applications to Under Review.
+router.get('/challenges/:id/applications', requireAuth, async (req, res) => {
+  const c = await ownedChallenge(idParam(req.params.id), req.user);
+  await query(
+    "UPDATE applications SET status = 'under_review' WHERE challenge_id = $1 AND status = 'submitted'",
+    [c.id]
+  );
+  const applications = await many(
+    `SELECT a.id, a.status, a.motivation, a.created_at, a.decided_at, a.participant_id,
+            p.full_name, p.bio, p.skills, p.education, p.location, p.interests, p.experiences,
+            u.email,
+            i.id AS invitation_id, i.status AS invitation_status,
+            (pm.user_id IS NOT NULL) AS in_team
+       FROM applications a
+       JOIN profiles p ON p.user_id = a.participant_id
+       JOIN users u ON u.id = a.participant_id
+       LEFT JOIN invitations i ON i.application_id = a.id
+       LEFT JOIN projects pr ON pr.challenge_id = a.challenge_id
+       LEFT JOIN project_members pm ON pm.project_id = pr.id AND pm.user_id = a.participant_id
+      WHERE a.challenge_id = $1 AND a.status <> 'withdrawn'
+      ORDER BY a.created_at ASC`,
+    [c.id]
+  );
+  const project = await one('SELECT id, name, status FROM projects WHERE challenge_id = $1', [c.id]);
+  res.json({ challenge: c, applications, project });
+});
+
