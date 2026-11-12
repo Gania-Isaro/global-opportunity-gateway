@@ -281,3 +281,30 @@ router.get('/projects/:projectId/posts', ...ws, async (req, res) => {
   res.json({ posts: rows });
 });
 
+router.post('/projects/:projectId/posts', ...ws, async (req, res) => {
+  const d = validate(req.body, {
+    body: { required: true, label: 'Message', max: 4000 },
+    parent_id: { type: 'int', min: 1, max: 1e9 },
+  });
+  if (d.parent_id) {
+    const parent = await one('SELECT id FROM discussion_posts WHERE id = $1 AND project_id = $2', [d.parent_id, req.project.id]);
+    if (!parent) fail(400, 'The message you are replying to no longer exists.');
+  }
+  const post = await one(
+    'INSERT INTO discussion_posts (project_id, author_id, parent_id, body) VALUES ($1,$2,$3,$4) RETURNING *',
+    [req.project.id, req.user.id, d.parent_id, d.body]
+  );
+  for (const uid of await memberIds(req.project.id)) {
+    if (uid !== req.user.id) {
+      await notify(uid, 'discussion_post', `${req.user.full_name} posted in ${req.project.name}.`, `/projects/${req.project.id}?tab=discussions`);
+    }
+  }
+  res.status(201).json({ post, message: 'Message posted.' });
+});
+
+// FR 9.7 Milestones (set and checked off by the owner)
+router.get('/projects/:projectId/milestones', ...ws, async (req, res) => {
+  const rows = await many('SELECT * FROM milestones WHERE project_id = $1 ORDER BY due_date NULLS LAST, id', [req.project.id]);
+  res.json({ milestones: rows });
+});
+
