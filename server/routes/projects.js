@@ -135,3 +135,30 @@ router.put('/projects/:projectId/members/:userId', ...ws, async (req, res) => {
   res.json({ message: 'Role updated.' });
 });
 
+// FR 9.3 Tasks
+router.get('/projects/:projectId/tasks', ...ws, async (req, res) => {
+  const rows = await many(
+    `SELECT t.*, pa.full_name AS assignee_name, pc.full_name AS creator_name
+       FROM tasks t
+       LEFT JOIN profiles pa ON pa.user_id = t.assignee_id
+       LEFT JOIN profiles pc ON pc.user_id = t.created_by
+      WHERE t.project_id = $1 ORDER BY t.status = 'done', t.due_date NULLS LAST, t.id`,
+    [req.project.id]
+  );
+  res.json({ tasks: rows });
+});
+
+const taskRules = {
+  title: { required: true, label: 'Task title', max: 200 },
+  description: { max: 2000, default: '' },
+  assignee_id: { type: 'int', min: 1, max: 1e9 },
+  status: { type: 'enum', values: ['todo', 'in_progress', 'done'], default: 'todo' },
+  due_date: { type: 'date', label: 'Due date' },
+};
+
+async function checkAssignee(projectId, assigneeId) {
+  if (!assigneeId) return;
+  const ok = await one('SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2', [projectId, assigneeId]);
+  if (!ok) fail(400, 'Tasks can only be assigned to team members.');
+}
+
