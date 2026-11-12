@@ -308,3 +308,31 @@ router.get('/projects/:projectId/milestones', ...ws, async (req, res) => {
   res.json({ milestones: rows });
 });
 
+router.post('/projects/:projectId/milestones', ...ws, async (req, res) => {
+  requireManager(req);
+  const d = validate(req.body, {
+    title: { required: true, label: 'Milestone', max: 200 },
+    due_date: { type: 'date', label: 'Due date' },
+  });
+  const m = await one('INSERT INTO milestones (project_id, title, due_date) VALUES ($1,$2,$3) RETURNING *', [req.project.id, d.title, d.due_date]);
+  res.status(201).json({ milestone: m, message: 'Milestone added.' });
+});
+
+router.post('/projects/:projectId/milestones/:milestoneId/toggle', ...ws, async (req, res) => {
+  requireManager(req);
+  const m = await one(
+    `UPDATE milestones SET done = NOT done, done_at = CASE WHEN done THEN NULL ELSE now() END
+      WHERE id = $1 AND project_id = $2 RETURNING *`,
+    [idParam(req.params.milestoneId), req.project.id]
+  );
+  if (!m) fail(404, 'Milestone not found.');
+  res.json({ milestone: m, message: m.done ? 'Milestone completed.' : 'Milestone reopened.' });
+});
+
+router.delete('/projects/:projectId/milestones/:milestoneId', ...ws, async (req, res) => {
+  requireManager(req);
+  await query('DELETE FROM milestones WHERE id = $1 AND project_id = $2', [idParam(req.params.milestoneId), req.project.id]);
+  res.json({ message: 'Milestone deleted.' });
+});
+
+export default router;
