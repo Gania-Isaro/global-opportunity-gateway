@@ -194,3 +194,33 @@ router.put('/projects/:projectId/tasks/:taskId', ...ws, async (req, res) => {
   res.json({ task: t, message: 'Task updated.' });
 });
 
+router.delete('/projects/:projectId/tasks/:taskId', ...ws, async (req, res) => {
+  const r = await query('DELETE FROM tasks WHERE id = $1 AND project_id = $2', [idParam(req.params.taskId), req.project.id]);
+  if (!r.rowCount) fail(404, 'Task not found.');
+  res.json({ message: 'Task deleted.' });
+});
+
+// FR 9.4 Research notes
+router.get('/projects/:projectId/notes', ...ws, async (req, res) => {
+  const rows = await many(
+    `SELECT n.*, p.full_name AS author_name FROM research_notes n
+       LEFT JOIN profiles p ON p.user_id = n.author_id
+      WHERE n.project_id = $1 ORDER BY n.created_at DESC`,
+    [req.project.id]
+  );
+  res.json({ notes: rows });
+});
+
+router.post('/projects/:projectId/notes', ...ws, async (req, res) => {
+  const d = validate(req.body, {
+    title: { required: true, label: 'Title', max: 200 },
+    body: { max: 5000, default: '' },
+    link: { type: 'url' },
+  });
+  const n = await one(
+    'INSERT INTO research_notes (project_id, author_id, title, body, link) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+    [req.project.id, req.user.id, d.title, d.body, d.link]
+  );
+  res.status(201).json({ note: n, message: 'Research note saved.' });
+});
+
