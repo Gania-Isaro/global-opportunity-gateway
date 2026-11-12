@@ -162,3 +162,35 @@ async function checkAssignee(projectId, assigneeId) {
   if (!ok) fail(400, 'Tasks can only be assigned to team members.');
 }
 
+router.post('/projects/:projectId/tasks', ...ws, async (req, res) => {
+  const d = validate(req.body, taskRules);
+  await checkAssignee(req.project.id, d.assignee_id);
+  const t = await one(
+    `INSERT INTO tasks (project_id, title, description, assignee_id, status, due_date, created_by, completed_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [req.project.id, d.title, d.description, d.assignee_id, d.status, d.due_date, req.user.id,
+      d.status === 'done' ? new Date() : null]
+  );
+  if (d.assignee_id && d.assignee_id !== req.user.id) {
+    await notify(d.assignee_id, 'task_assigned', `You were assigned the task "${d.title}" in ${req.project.name}.`, `/projects/${req.project.id}?tab=tasks`);
+  }
+  res.status(201).json({ task: t, message: 'Task created.' });
+});
+
+router.put('/projects/:projectId/tasks/:taskId', ...ws, async (req, res) => {
+  const current = await one('SELECT * FROM tasks WHERE id = $1 AND project_id = $2', [idParam(req.params.taskId), req.project.id]);
+  if (!current) fail(404, 'Task not found.');
+  const d = validate({ ...current, ...req.body }, taskRules);
+  await checkAssignee(req.project.id, d.assignee_id);
+  const completedAt = d.status === 'done' ? current.completed_at || new Date() : null;
+  const t = await one(
+    `UPDATE tasks SET title=$2, description=$3, assignee_id=$4, status=$5, due_date=$6, completed_at=$7
+      WHERE id=$1 RETURNING *`,
+    [current.id, d.title, d.description, d.assignee_id, d.status, d.due_date, completedAt]
+  );
+  if (d.assignee_id && d.assignee_id !== current.assignee_id && d.assignee_id !== req.user.id) {
+    await notify(d.assignee_id, 'task_assigned', `You were assigned the task "${d.title}" in ${req.project.name}.`, `/projects/${req.project.id}?tab=tasks`);
+  }
+  res.json({ task: t, message: 'Task updated.' });
+});
+
