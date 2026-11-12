@@ -102,3 +102,36 @@ router.get('/projects/:projectId', ...ws, async (req, res) => {
   });
 });
 
+router.post('/projects/:projectId/complete', ...ws, async (req, res) => {
+  requireManager(req);
+  const status = req.project.status === 'active' ? 'completed' : 'active';
+  await query('UPDATE projects SET status = $2, completed_at = $3 WHERE id = $1',
+    [req.project.id, status, status === 'completed' ? new Date() : null]);
+  res.json({ message: status === 'completed' ? 'Project marked as completed.' : 'Project reopened.' });
+});
+
+// Add a confirmed participant to an existing team
+router.post('/projects/:projectId/members', ...ws, async (req, res) => {
+  requireManager(req);
+  const { user_id } = validate(req.body, { user_id: { required: true, type: 'int', min: 1, max: 1e9 } });
+  const ok = await one(
+    `SELECT 1 FROM applications a JOIN invitations i ON i.application_id = a.id
+      WHERE a.challenge_id = $1 AND a.participant_id = $2 AND i.status = 'confirmed'`,
+    [req.project.challenge_id, user_id]
+  );
+  if (!ok) fail(400, 'Only participants who confirmed their invitation can join the team.');
+  await query("INSERT INTO project_members (project_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [req.project.id, user_id]);
+  await notify(user_id, 'team_formed', `You were added to the team "${req.project.name}".`, `/projects/${req.project.id}`);
+  res.json({ message: 'Member added to the team.' });
+});
+
+// FR 8.3 Assign roles
+router.put('/projects/:projectId/members/:userId', ...ws, async (req, res) => {
+  requireManager(req);
+  const userId = idParam(req.params.userId);
+  const { role } = validate(req.body, { role: { required: true, label: 'Role', max: 60 } });
+  const r = await query('UPDATE project_members SET role = $3 WHERE project_id = $1 AND user_id = $2', [req.project.id, userId, role]);
+  if (!r.rowCount) fail(404, 'Member not found.');
+  res.json({ message: 'Role updated.' });
+});
+
