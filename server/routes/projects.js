@@ -68,3 +68,37 @@ router.get('/projects/mine', requireAuth, async (req, res) => {
   res.json({ projects: rows });
 });
 
+// FR 9.2 Overview
+router.get('/projects/:projectId', ...ws, async (req, res) => {
+  const p = req.project;
+  const challenge = await one(
+    `SELECT c.id, c.title, c.description, c.outcome, c.sector, c.skills, c.deadline, c.team_size,
+            o.name AS org_name, (o.status = 'verified') AS verified
+       FROM challenges c LEFT JOIN organisations o ON o.id = c.org_id WHERE c.id = $1`,
+    [p.challenge_id]
+  );
+  const members = await many(
+    `SELECT pm.user_id, pm.role, pm.joined_at, pr.full_name, pr.skills, (pm.user_id = $2) AS is_owner
+       FROM project_members pm JOIN profiles pr ON pr.user_id = pm.user_id
+      WHERE pm.project_id = $1 ORDER BY (pm.user_id = $2) DESC, pm.joined_at`,
+    [p.id, p.owner_id]
+  );
+  // Confirmed participants who are not yet in the team, so the owner can add them.
+  const available = req.access.canManage ? await many(
+    `SELECT a.participant_id AS user_id, pr.full_name
+       FROM applications a JOIN invitations i ON i.application_id = a.id
+       JOIN profiles pr ON pr.user_id = a.participant_id
+      WHERE a.challenge_id = $1 AND i.status = 'confirmed'
+        AND a.participant_id NOT IN (SELECT user_id FROM project_members WHERE project_id = $2)`,
+    [p.challenge_id, p.id]
+  ) : [];
+  res.json({
+    project: { id: p.id, name: p.name, status: p.status, created_at: p.created_at, owner_id: p.owner_id },
+    challenge,
+    members,
+    available,
+    progress: await projectProgress(p.id),
+    access: req.access,
+  });
+});
+
