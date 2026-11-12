@@ -224,3 +224,32 @@ router.post('/projects/:projectId/notes', ...ws, async (req, res) => {
   res.status(201).json({ note: n, message: 'Research note saved.' });
 });
 
+router.delete('/projects/:projectId/notes/:noteId', ...ws, async (req, res) => {
+  const n = await one('SELECT author_id FROM research_notes WHERE id = $1 AND project_id = $2', [idParam(req.params.noteId), req.project.id]);
+  if (!n) fail(404, 'Note not found.');
+  if (n.author_id !== req.user.id && !req.access.canManage) fail(403, 'Only the author or project owner can delete this note.');
+  await query('DELETE FROM research_notes WHERE id = $1', [idParam(req.params.noteId)]);
+  res.json({ message: 'Note deleted.' });
+});
+
+// FR 9.5 Files (10 MB limit, approved types only)
+router.get('/projects/:projectId/files', ...ws, async (req, res) => {
+  const rows = await many(
+    `SELECT f.id, f.filename, f.mime, f.size, f.created_at, f.uploader_id, p.full_name AS uploader_name
+       FROM project_files f LEFT JOIN profiles p ON p.user_id = f.uploader_id
+      WHERE f.project_id = $1 ORDER BY f.created_at DESC`,
+    [req.project.id]
+  );
+  res.json({ files: rows });
+});
+
+router.post('/projects/:projectId/files', ...ws, acceptFiles('file'), async (req, res) => {
+  if (!req.file) fail(400, 'Choose a file to upload.');
+  const f = await one(
+    `INSERT INTO project_files (project_id, uploader_id, filename, mime, size, data)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, filename, size, created_at`,
+    [req.project.id, req.user.id, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer]
+  );
+  res.status(201).json({ file: f, message: 'File uploaded.' });
+});
+
