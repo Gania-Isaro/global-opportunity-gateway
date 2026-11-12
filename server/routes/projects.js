@@ -253,3 +253,31 @@ router.post('/projects/:projectId/files', ...ws, acceptFiles('file'), async (req
   res.status(201).json({ file: f, message: 'File uploaded.' });
 });
 
+router.get('/projects/:projectId/files/:fileId', ...ws, async (req, res) => {
+  const f = await one('SELECT filename, mime, data FROM project_files WHERE id = $1 AND project_id = $2', [idParam(req.params.fileId), req.project.id]);
+  if (!f) fail(404, 'File not found.');
+  res.setHeader('Content-Type', f.mime);
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(f.filename)}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(f.data);
+});
+
+router.delete('/projects/:projectId/files/:fileId', ...ws, async (req, res) => {
+  const f = await one('SELECT uploader_id FROM project_files WHERE id = $1 AND project_id = $2', [idParam(req.params.fileId), req.project.id]);
+  if (!f) fail(404, 'File not found.');
+  if (f.uploader_id !== req.user.id && !req.access.canManage) fail(403, 'Only the uploader or project owner can delete this file.');
+  await query('DELETE FROM project_files WHERE id = $1', [idParam(req.params.fileId)]);
+  res.json({ message: 'File deleted.' });
+});
+
+// FR 9.6 Discussions (posts and replies)
+router.get('/projects/:projectId/posts', ...ws, async (req, res) => {
+  const rows = await many(
+    `SELECT d.*, p.full_name AS author_name FROM discussion_posts d
+       LEFT JOIN profiles p ON p.user_id = d.author_id
+      WHERE d.project_id = $1 ORDER BY d.created_at ASC`,
+    [req.project.id]
+  );
+  res.json({ posts: rows });
+});
+
