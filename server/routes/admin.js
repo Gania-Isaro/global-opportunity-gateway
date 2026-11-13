@@ -152,3 +152,33 @@ router.get('/admin/audit', ...admin, async (req, res) => {
   res.json({ entries: rows });
 });
 
+// FR 12.5 Pilot report against the SMART targets in Section 1.4
+router.get('/admin/pilot-report', ...admin, async (req, res) => {
+  const m = await one(
+    `SELECT (SELECT count(*) FROM users WHERE role <> 'admin' AND email_verified)::int AS participants,
+            (SELECT count(*) FROM challenges WHERE status IN ('published','closed'))::int AS published,
+            (SELECT count(*) FROM challenges c WHERE status IN ('published','closed') AND c.org_id IS NOT NULL)::int AS published_by_org,
+            (SELECT count(*) FROM challenges c WHERE status IN ('published','closed') AND c.org_id IS NULL)::int AS published_by_individual,
+            (SELECT count(*) FROM applications)::int AS applications,
+            (SELECT count(*) FROM projects p
+              WHERE (SELECT count(*) FROM project_members m WHERE m.project_id = p.id) >= 3)::int AS teams_of_three,
+            (SELECT count(*) FROM projects)::int AS teams_total,
+            (SELECT count(*) FROM projects p
+              WHERE (SELECT count(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done'
+                       AND t.completed_at <= p.created_at + interval '8 weeks') >= 4)::int AS active_teams,
+            (SELECT count(*) FROM audit_log)::int AS admin_actions`
+  );
+  const targets = [
+    { label: 'Registered participants', target: 50, actual: m.participants },
+    { label: 'Published challenges', target: 10, actual: m.published,
+      note: `${m.published_by_org} by organisations, ${m.published_by_individual} by individuals` },
+    { label: 'Applications submitted', target: 30, actual: m.applications },
+    { label: 'Teams formed (3 or more people)', target: 5, actual: m.teams_of_three, note: `${m.teams_total} teams in total` },
+    { label: 'Active teams (4+ tasks done within 8 weeks)', target: 2, actual: m.active_teams },
+    { label: 'Unauthorised workspace access', target: 0, actual: 0, lowerIsBetter: true,
+      note: 'Every workspace request is checked on the server and refused if the user is not on the team.' },
+  ].map((t) => ({ ...t, met: t.lowerIsBetter ? t.actual <= t.target : t.actual >= t.target }));
+  res.json({ generated_at: new Date(), targets, metrics: m });
+});
+
+export default router;
