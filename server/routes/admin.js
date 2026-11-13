@@ -51,3 +51,31 @@ router.get('/admin/organisations', ...admin, async (req, res) => {
   res.json({ organisations: rows });
 });
 
+router.post('/admin/organisations/:id/decision', ...admin, async (req, res) => {
+  const org = await one('SELECT * FROM organisations WHERE id = $1', [idParam(req.params.id)]);
+  if (!org) fail(404, 'Organisation not found.');
+  const d = validate(req.body, {
+    decision: { required: true, type: 'enum', values: ['verified', 'rejected'], label: 'Decision' },
+    reason: { max: 500 },
+  });
+  if (d.decision === 'rejected' && !d.reason) {
+    fail(400, 'Please fix the highlighted fields.', { reason: 'Give a reason so the organisation knows what to fix.' });
+  }
+  await query(
+    'UPDATE organisations SET status = $2, rejection_reason = $3, reviewed_at = now() WHERE id = $1',
+    [org.id, d.decision, d.decision === 'rejected' ? d.reason : null]
+  );
+  await audit(req.user.id, d.decision === 'verified' ? 'verify_organisation' : 'reject_organisation', 'organisation', org.id,
+    d.decision === 'rejected' ? `${org.name}: ${d.reason}` : org.name);
+  // FR 3.5 Notify the representative
+  await notify(
+    org.rep_user_id,
+    'verification_decision',
+    d.decision === 'verified'
+      ? `${org.name} is now verified. Your challenges will show the Verified badge.`
+      : `${org.name} was not verified. Reason: ${d.reason}`,
+    '/organisation'
+  );
+  res.json({ message: d.decision === 'verified' ? 'Organisation verified.' : 'Organisation rejected.' });
+});
+
