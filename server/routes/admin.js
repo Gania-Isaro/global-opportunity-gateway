@@ -32,3 +32,22 @@ router.get('/admin/summary', ...admin, async (req, res) => {
   res.json(await adminSummary());
 });
 
+// FR 3.3 Organisation verification
+router.get('/admin/organisations', ...admin, async (req, res) => {
+  const status = ['pending', 'verified', 'rejected'].includes(req.query.status) ? req.query.status : null;
+  const rows = await many(
+    `SELECT o.*, p.full_name AS rep_name, u.email AS rep_email,
+            COALESCE(json_agg(json_build_object('id', d.id, 'filename', d.filename, 'size', d.size))
+                     FILTER (WHERE d.id IS NOT NULL), '[]') AS documents
+       FROM organisations o
+       JOIN users u ON u.id = o.rep_user_id
+       JOIN profiles p ON p.user_id = o.rep_user_id
+       LEFT JOIN organisation_documents d ON d.org_id = o.id
+      ${status ? 'WHERE o.status = $1' : ''}
+      GROUP BY o.id, p.full_name, u.email
+      ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
+    status ? [status] : []
+  );
+  res.json({ organisations: rows });
+});
+
