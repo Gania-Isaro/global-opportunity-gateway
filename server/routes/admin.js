@@ -79,3 +79,34 @@ router.post('/admin/organisations/:id/decision', ...admin, async (req, res) => {
   res.json({ message: d.decision === 'verified' ? 'Organisation verified.' : 'Organisation rejected.' });
 });
 
+// FR 12.1 Manage accounts
+router.get('/admin/users', ...admin, async (req, res) => {
+  const params = [];
+  let where = '';
+  if (req.query.q) {
+    params.push(`%${req.query.q}%`);
+    where = 'WHERE u.email ILIKE $1 OR p.full_name ILIKE $1';
+  }
+  const rows = await many(
+    `SELECT u.id, u.email, u.role, u.email_verified, u.banned, u.created_at, u.locked_until, p.full_name
+       FROM users u JOIN profiles p ON p.user_id = u.id ${where}
+      ORDER BY u.created_at DESC LIMIT 200`,
+    params
+  );
+  res.json({ users: rows });
+});
+
+router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
+  const id = idParam(req.params.id);
+  if (id === req.user.id) fail(400, 'You cannot suspend your own account.');
+  const u = await one('SELECT id, email, role, banned FROM users WHERE id = $1', [id]);
+  if (!u) fail(404, 'User not found.');
+  if (u.role === 'admin') fail(400, 'Administrator accounts cannot be suspended here.');
+  const { reason } = validate(req.body, { reason: { max: 500 } });
+  const banned = !u.banned;
+  await query('UPDATE users SET banned = $2, locked_until = NULL, failed_logins = 0 WHERE id = $1', [id, banned]);
+  if (banned) await query("DELETE FROM user_sessions WHERE (sess->>'userId')::int = $1", [id]).catch(() => {});
+  await audit(req.user.id, banned ? 'suspend_user' : 'unlock_user', 'user', id, `${u.email}${reason ? `: ${reason}` : ''}`);
+  res.json({ message: banned ? 'Account suspended.' : 'Account unlocked.' });
+});
+
