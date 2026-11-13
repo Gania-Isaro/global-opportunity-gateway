@@ -222,3 +222,17 @@ export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
   return true;
 }
 
+// Allow running this file directly: node server/seed.js [--reset]
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const reset = process.argv.includes('--reset');
+  initSchema()
+    .then(() => seedDemoData({ onlyIfEmpty: !reset, reset }))
+    .then((added) => {
+      if (!added) console.log('The database already has data. Use "npm run seed -- --reset" to start fresh.');
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    })
+    .finally(() => pool.end());
+}
