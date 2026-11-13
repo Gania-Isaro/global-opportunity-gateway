@@ -110,3 +110,45 @@ router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
   res.json({ message: banned ? 'Account suspended.' : 'Account unlocked.' });
 });
 
+// FR 12.2 Remove content
+router.post('/admin/challenges/:id/remove', ...admin, async (req, res) => {
+  const c = await one('SELECT * FROM challenges WHERE id = $1', [idParam(req.params.id)]);
+  if (!c) fail(404, 'Challenge not found.');
+  if (c.status === 'removed') fail(400, 'This challenge was already removed.');
+  const { reason } = validate(req.body, { reason: { required: true, label: 'Reason', max: 500 } });
+  await query("UPDATE challenges SET status = 'removed', closed_at = now() WHERE id = $1", [c.id]);
+  await query("UPDATE reports SET status = 'resolved' WHERE target_type = 'challenge' AND target_id = $1 AND status = 'open'", [c.id]);
+  await audit(req.user.id, 'remove_challenge', 'challenge', c.id, `${c.title}: ${reason}`);
+  await notify(c.owner_id, 'challenge_removed', `Your challenge "${c.title}" was removed for breaking platform rules. Reason: ${reason}`);
+  res.json({ message: 'Challenge removed.' });
+});
+
+// FR 12.3 Reports raised by users
+router.get('/admin/reports', ...admin, async (req, res) => {
+  const rows = await many(
+    `SELECT r.*, p.full_name AS reporter_name,
+            CASE WHEN r.target_type = 'challenge' THEN (SELECT title FROM challenges WHERE id = r.target_id)
+                 ELSE (SELECT full_name FROM profiles WHERE user_id = r.target_id) END AS target_name
+       FROM reports r LEFT JOIN profiles p ON p.user_id = r.reporter_id
+      ORDER BY (r.status = 'open') DESC, r.created_at DESC`
+  );
+  res.json({ reports: rows });
+});
+
+router.post('/admin/reports/:id/dismiss', ...admin, async (req, res) => {
+  const r = await one("UPDATE reports SET status = 'dismissed' WHERE id = $1 AND status = 'open' RETURNING *", [idParam(req.params.id)]);
+  if (!r) fail(404, 'Open report not found.');
+  await audit(req.user.id, 'dismiss_report', r.target_type, r.target_id, r.reason);
+  res.json({ message: 'Report dismissed.' });
+});
+
+// FR 12.4 Audit log (read only)
+router.get('/admin/audit', ...admin, async (req, res) => {
+  const rows = await many(
+    `SELECT a.*, p.full_name AS admin_name FROM audit_log a
+       LEFT JOIN profiles p ON p.user_id = a.admin_id
+      ORDER BY a.created_at DESC LIMIT 500`
+  );
+  res.json({ entries: rows });
+});
+
