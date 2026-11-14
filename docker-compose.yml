@@ -1,0 +1,17 @@
+# Local PostgreSQL database for development.
+# Start it with: docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gog
+      POSTGRES_PASSWORD: gog
+      POSTGRES_DB: gog
+    ports:
+      - "5432:5432"
+    volumes:
+      - gog-data:/var/lib/postgresql/data
+
+volumes:
+  gog-data:
