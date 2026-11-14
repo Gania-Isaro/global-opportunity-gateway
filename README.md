@@ -72,3 +72,21 @@ This follows the three tier design in my component diagram: the browser (client 
 
 ---
 
+## Demo accounts
+
+When the app starts with an empty database it adds demo data. Every demo account uses the password **`Demo1234`**.
+
+| Role | Email | What to try |
+|---|---|---|
+| Administrator | `admin@gog.rw` | Verify Afya Hub, review the open report, see the audit log and pilot report |
+| Challenge owner (verified organisation) | `owner@greenkigali.rw` | Owns the Kimironko smart waste project with a full workspace |
+| Challenge owner (organisation pending verification) | `owner@afyahub.rw` | Has two new applications waiting for review |
+| Challenge owner (individual) | `diane@gog.rw` | Has a draft challenge and one application |
+| Participant | `participant@gog.rw` | Team member in the smart waste project |
+| Participant | `grace@gog.rw` | Has applications in different states |
+| Participant | `patrick@gog.rw`, `sandrine@gog.rw` | Extra participants |
+
+You can also register a new account. While `DEMO_MODE=true`, the confirmation link is shown on screen right after you sign up, so you do not need a real mailbox.
+
+---
+
