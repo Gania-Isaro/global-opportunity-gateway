@@ -37,3 +37,34 @@ app.use((req, res, next) => {
   next();
 });
 
+// Redirect plain HTTP to HTTPS in production (Section 3.4)
+app.use((req, res, next) => {
+  if (config.isProduction && req.get('x-forwarded-proto') === 'http') {
+    return res.redirect(301, `https://${req.get('host')}${req.originalUrl}`);
+  }
+  next();
+});
+
+app.use(express.json({ limit: '200kb' }));
+
+const PgStore = connectPg(session);
+app.use(
+  session({
+    name: 'gog.sid',
+    store: new PgStore({ pool, tableName: 'user_sessions', createTableIfMissing: true }),
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    rolling: true, // every request resets the 30 minute idle timer (NFR 5)
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: config.isProduction,
+      maxAge: config.sessionMinutes * 60 * 1000,
+    },
+  })
+);
+
+const api = express.Router();
+api.use(csrfGuard);
+api.use(loadUser);
