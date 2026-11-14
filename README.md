@@ -237,3 +237,38 @@ To send real emails, add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and 
 
 ---
 
+## Project structure
+
+```
+global-opportunity-gateway/
+├── server/                 Express REST API
+│   ├── index.js            App setup, sessions, security headers, routes
+│   ├── config.js           Settings read from .env
+│   ├── db.js               PostgreSQL connection and helpers
+│   ├── schema.sql          Database tables
+│   ├── seed.js             Demo data
+│   ├── middleware.js       Login, role checks, CSRF guard, error handling
+│   ├── validate.js         Input validation with plain English messages
+│   ├── uploads.js          File upload limits and allowed types
+│   ├── mailer.js           Email sending
+│   ├── notify.js           Notifications and audit log
+│   └── routes/             One file per feature area (FR 1 to FR 12)
+├── client/                 React front end (Vite)
+│   └── src/
+│       ├── pages/          One file per screen
+│       ├── components/     Shared layout and UI pieces
+│       ├── api.js          REST API client
+│       └── styles.css      One visual style for all screens
+├── tests/                  End to end journey tests
+├── docker-compose.yml      Local PostgreSQL
+├── render.yaml             Render deployment blueprint
+└── .env.example            Settings template
+```
+
+## Out of scope for this MVP
+
+As stated in my SRS, these are planned for future increments: global experience journals, mentors, international connections, investor features, contribution tracking, benefit agreements, impact measurement, payments, native mobile apps, video calls, single sign on and multiple languages.
+
+## Author
+
+Gania Isaro Kayumba, Bachelor of Software Engineering, African Leadership University
