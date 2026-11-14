@@ -90,3 +90,121 @@ You can also register a new account. While `DEMO_MODE=true`, the confirmation li
 
 ---
 
+## Run it on your computer
+
+### 1. Install the requirements
+
+- **Node.js 20 or newer** (I used Node 24): https://nodejs.org
+- **Git**: https://git-scm.com
+- **PostgreSQL**, using one of these options:
+  - **Option A (easiest): Docker Desktop**: https://www.docker.com/products/docker-desktop
+  - **Option B: PostgreSQL installed directly**: https://www.postgresql.org/download
+  - **Option C: a free hosted database on Neon**: https://neon.tech (no install needed)
+
+Check that Node and npm are installed:
+
+```bash
+node --version
+npm --version
+```
+
+### 2. Get the code
+
+```bash
+git clone https://github.com/Gania-Isaro/global-opportunity-gateway.git
+cd global-opportunity-gateway
+```
+
+### 3. Install the packages
+
+This installs the server packages and then the front end packages:
+
+```bash
+npm install
+npm install --prefix client
+```
+
+### 4. Create the database
+
+**Option A, Docker:** make sure Docker Desktop is running, then start the database from the project folder:
+
+```bash
+docker compose up -d
+```
+
+This starts PostgreSQL on port 5432 with user `gog`, password `gog` and database `gog`, which matches the default settings.
+
+**Option B, local PostgreSQL:** open `psql` as the `postgres` user and run:
+
+```sql
+CREATE USER gog WITH PASSWORD 'gog';
+CREATE DATABASE gog OWNER gog;
+```
+
+**Option C, Neon:** create a free project at https://neon.tech, copy the connection string (it looks like `postgresql://user:password@ep-xxx.neon.tech/neondb?sslmode=require`) and use it as `DATABASE_URL` in the next step with `DATABASE_SSL=true`.
+
+### 5. Create the settings file
+
+Copy the example settings file:
+
+```bash
+cp .env.example .env
+```
+
+On Windows Command Prompt use `copy .env.example .env` instead.
+
+The defaults work with Option A and Option B. Open `.env` and change `DATABASE_URL` only if your database is different. All the settings are explained inside the file.
+
+### 6. Start the app
+
+```bash
+npm run dev
+```
+
+This starts two things at once:
+
+- the API server on http://localhost:4000
+- the React app on http://localhost:5173
+
+Open **http://localhost:5173** in your browser. On the first start the server creates all the tables and adds the demo data, and you will see `Demo data added` in the terminal.
+
+### 7. (Optional) Run it the way it runs in production
+
+This builds the React app and serves everything from one server on port 4000:
+
+```bash
+npm run build
+npm start
+```
+
+Then open http://localhost:4000. If you use this mode, set `APP_URL=http://localhost:4000` in `.env` so the links in emails point to the right place.
+
+### Useful commands
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the API and the React app for development |
+| `npm run build` | Build the React app for production |
+| `npm start` | Start the production server |
+| `npm run seed` | Add the demo data if the database is empty |
+| `npm run seed -- --reset` | Delete all data and add the demo data again |
+| `npm test` | Run the end to end tests (the server must be running) |
+
+### Tests
+
+The file `tests/journey.test.js` walks through the whole journey through the API and checks the business rules: registration and email confirmation, profile completeness, challenge creation and publishing, search, applying, duplicate and self application blocking, profile visibility, withdrawal, review and invitations, team formation, workspace privacy, tasks, milestones, progress, file type checks, notifications, dashboards, admin actions, audit log and account locking.
+
+Start the server first (step 6), then in a second terminal run:
+
+```bash
+npm test
+```
+
+### Troubleshooting
+
+- **`Failed to start the server: connect ECONNREFUSED`**: the database is not running. Start Docker Desktop and run `docker compose up -d`, or check `DATABASE_URL` in `.env`.
+- **Port 5432 is already in use**: change the left side of the port in `docker-compose.yml` (for example `"55432:5432"`) and use that port in `DATABASE_URL`.
+- **I want a clean start**: run `npm run seed -- --reset`.
+
+---
+
