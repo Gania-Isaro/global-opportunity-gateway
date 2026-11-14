@@ -208,3 +208,32 @@ npm test
 
 ---
 
+## Deployment (Render and Neon)
+
+This is how I deployed the live version for free.
+
+### 1. Create the database on Neon
+
+1. Sign up at https://neon.tech and create a project.
+2. Copy the connection string from the dashboard. It ends with `?sslmode=require`.
+
+### 2. Create the web service on Render
+
+1. Sign up at https://render.com with GitHub.
+2. Click **New** → **Blueprint** and choose this repository. Render reads `render.yaml`.
+3. When asked, fill in:
+   - `DATABASE_URL`: the Neon connection string
+   - `APP_URL`: the address Render gives the service, for example `https://global-opportunity-gateway.onrender.com`
+4. Click **Apply**. Render runs `npm install && npm run build` and then `npm start`.
+5. When the deploy finishes, open the URL. The tables and the demo data are created on the first start.
+
+If you prefer to create the service by hand instead of with the blueprint, use **New** → **Web Service**, runtime Node, build command `npm install && npm run build`, start command `npm start`, and add these environment variables: `NODE_ENV=production`, `DATABASE_URL`, `DATABASE_SSL=true`, `SESSION_SECRET` (any long random text), `APP_URL`, `DEMO_MODE=true`, `SEED_DEMO_DATA=true`.
+
+Note: the free Render plan sleeps after 15 minutes without visits, so the first page load after a break can take up to a minute.
+
+### Real emails (optional)
+
+To send real emails, add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` from any SMTP provider (for example Brevo or a Gmail app password). Without them, emails are printed to the server log and the links are shown on screen in demo mode.
+
+---
+
