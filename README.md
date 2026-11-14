@@ -29,3 +29,46 @@ GOG gives that journey a structure:
 5. **The team** works in the workspace with tasks, research notes, files, discussions and milestones, and progress is calculated automatically.
 6. **Administrators** verify organisations, moderate reported content, suspend accounts, and see an audit log and a pilot report.
 
+## Features (mapped to my SRS)
+
+| SRS | Feature |
+|---|---|
+| FR 1 | Register, confirm email, log in and out, reset password, role based access on every request |
+| FR 2 | Profiles with bio, skills, education, location, interests and global experiences. Full profile visible to an owner only after the participant applies |
+| FR 3 | Organisation registration with supporting documents, pending status, admin approve or reject with a reason, Verified badge, decision notification |
+| FR 4 | Create, save as draft, edit, publish and close challenges. Auto close when the deadline passes. Only the owner can change a challenge |
+| FR 5 | Public challenge list, keyword search, filters by sector, skill, deadline, status and verified organisations, challenge detail page |
+| FR 6 | Apply with a motivation, no duplicates, no applying to your own challenge, status tracking (Submitted, Under review, Accepted, Rejected, Withdrawn), withdraw |
+| FR 7 | Owner reviews applications, accepts or rejects, applicants are notified, invitations are sent and confirmed or declined |
+| FR 8 | Owner forms the team from confirmed participants, a project is created and linked to one challenge, owner assigns roles |
+| FR 9 | Private workspace: overview, tasks (create, assign, update, complete), research notes and links, file sharing up to 10 MB, discussions with replies, milestones, automatic progress |
+| FR 10 | In app notifications, email for high priority events, mark as read |
+| FR 11 | Participant, challenge owner and administrator dashboards |
+| FR 12 | Suspend and unlock accounts, remove challenges, report content, audit log, pilot report against the SMART targets |
+
+Security and quality requirements I implemented:
+
+- Passwords stored only as salted bcrypt hashes (NFR 2)
+- Role checks on the server for every request, not only in the interface (NFR 3, NFR 4)
+- Sessions end after 30 minutes without activity (NFR 5)
+- Account locked for 15 minutes after 5 failed logins (Section 5.3)
+- CSRF protection, parameterised SQL queries (no SQL injection), React output escaping (no XSS), approved file types only (Section 5.3)
+- HTTPS redirect and security headers in production
+- Append only audit log of all administrator decisions (NFR 11, BR 10)
+- Responsive from 360 px phones to 1920 px desktops, keyboard navigation, labelled form fields and plain English validation messages next to each field (Section 3.1, NFR 10)
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Front end | React 19, React Router, Vite |
+| Back end | Node.js, Express 5 (REST API with JSON) |
+| Database | PostgreSQL |
+| Email | Nodemailer over SMTP (optional, emails are printed to the server log when SMTP is not set) |
+| File storage | Stored in PostgreSQL (10 MB limit per file) |
+| Hosting | Render (web service) and Neon (PostgreSQL), both on free plans |
+
+This follows the three tier design in my component diagram: the browser (client tier) talks to the REST API (application tier), which uses the PostgreSQL database (data tier) and the email service.
+
+---
+
