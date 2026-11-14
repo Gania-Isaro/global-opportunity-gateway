@@ -1,0 +1,27 @@
+# Render blueprint for GOG. The database is hosted on Neon (free tier),
+# so DATABASE_URL is entered in the Render dashboard.
+services:
+  - type: web
+    name: global-opportunity-gateway
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: DEMO_MODE
+        value: "true"
+      - key: SEED_DEMO_DATA
+        value: "true"
