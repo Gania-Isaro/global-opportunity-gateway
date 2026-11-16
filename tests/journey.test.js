@@ -82,3 +82,26 @@ test('BR 1: an incomplete profile cannot create a challenge', async () => {
   assert.equal(r.status, 403);
 });
 
+test('FR 2: participants complete their profiles', async () => {
+  for (const c of [owner, alice, bob]) {
+    const r = await c.put('/profile', {
+      full_name: 'Test User', bio: 'Bio', skills: ['Research', 'Design'], location: 'Kigali',
+      experiences: 'Exchange in Ghana',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.status.complete, true);
+  }
+});
+
+test('FR 4: owner creates a draft, then publishes it', async () => {
+  const r = await owner.post('/challenges', {
+    title: `Journey test challenge ${stamp}`, description: 'A test problem.', sector: 'Health',
+    skills: ['Research'], outcome: 'A result.', deadline: '2099-12-31', team_size: 2,
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.challenge.status, 'draft');
+  ctx.challengeId = r.data.challenge.id;
+  const pub = await owner.post(`/challenges/${ctx.challengeId}/publish`);
+  assert.equal(pub.status, 200);
+});
+
