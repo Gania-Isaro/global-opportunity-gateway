@@ -131,3 +131,29 @@ test('FR 6: apply, no duplicates, no self application', async () => {
   ctx.bobApp = b.data.application.id;
 });
 
+test('FR 2.3: owner sees full profile only after the user applies', async () => {
+  const applied = await owner.get(`/users/${ctx.alice.id}`);
+  assert.equal(applied.data.restricted, false);
+  const notApplied = await owner.get(`/users/${ctx.outsider.id}`);
+  assert.equal(notApplied.data.restricted, true);
+});
+
+test('FR 6.5: participant can withdraw before a decision', async () => {
+  const r = await bob.post(`/applications/${ctx.bobApp}/withdraw`);
+  assert.equal(r.status, 200);
+  const mine = await bob.get('/applications/mine');
+  assert.equal(mine.data.applications.find((a) => a.id === ctx.bobApp).status, 'withdrawn');
+});
+
+test('FR 7: owner reviews, accepts and invites; BR 2 others cannot decide', async () => {
+  const list = await owner.get(`/challenges/${ctx.challengeId}/applications`);
+  assert.equal(list.status, 200);
+  assert.equal(list.data.applications.find((a) => a.id === ctx.aliceApp).status, 'under_review');
+  const notOwner = await alice.post(`/applications/${ctx.aliceApp}/decision`, { decision: 'accepted' });
+  assert.equal(notOwner.status, 403);
+  const accept = await owner.post(`/applications/${ctx.aliceApp}/decision`, { decision: 'accepted' });
+  assert.equal(accept.status, 200);
+  const invite = await owner.post(`/applications/${ctx.aliceApp}/invite`);
+  assert.equal(invite.status, 200);
+});
+
