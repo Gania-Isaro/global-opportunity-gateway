@@ -105,3 +105,29 @@ test('FR 4: owner creates a draft, then publishes it', async () => {
   assert.equal(pub.status, 200);
 });
 
+test('FR 4.5: only the owner can edit a challenge', async () => {
+  const r = await alice.put(`/challenges/${ctx.challengeId}`, {
+    title: 'Hacked', description: 'x', sector: 'Health', skills: ['x'], outcome: 'x', deadline: '2099-12-31', team_size: 2,
+  });
+  assert.equal(r.status, 403);
+});
+
+test('FR 5: the challenge can be found by keyword and filter', async () => {
+  const r = await client().get(`/challenges?q=${stamp}&sector=Health&skill=research`);
+  assert.equal(r.status, 200);
+  assert.ok(r.data.challenges.some((c) => c.id === ctx.challengeId));
+});
+
+test('FR 6: apply, no duplicates, no self application', async () => {
+  const a = await alice.post(`/challenges/${ctx.challengeId}/applications`, { motivation: 'I studied this problem abroad and can help.' });
+  assert.equal(a.status, 201);
+  ctx.aliceApp = a.data.application.id;
+  const dup = await alice.post(`/challenges/${ctx.challengeId}/applications`, { motivation: 'Applying again to the same challenge.' });
+  assert.equal(dup.status, 400);
+  const self = await owner.post(`/challenges/${ctx.challengeId}/applications`, { motivation: 'I want to apply to my own challenge.' });
+  assert.equal(self.status, 400);
+  const b = await bob.post(`/challenges/${ctx.challengeId}/applications`, { motivation: 'I have research skills for this challenge.' });
+  assert.equal(b.status, 201);
+  ctx.bobApp = b.data.application.id;
+});
+
