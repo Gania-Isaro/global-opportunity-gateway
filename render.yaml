@@ -1,26 +1,41 @@
-# Render blueprint for GOG. The database is hosted on Neon (free tier),
-# so DATABASE_URL is entered in the Render dashboard.
+# Render blueprint for GOG. Render creates both the PostgreSQL database
+# and the web service, and links them together.
+databases:
+  - name: gog-db
+    databaseName: gog
+    user: gog
+    plan: free
+    region: frankfurt
+
 services:
   - type: web
     name: global-opportunity-gateway
     runtime: node
     plan: free
+    region: frankfurt
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    # Custom domain. Its DNS needs a CNAME record pointing to the onrender.com address.
+    domains:
+      - gog.gania.tech
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: "22"
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: gog-db
+          property: connectionString
+      # The internal connection inside Render does not use SSL.
       - key: DATABASE_SSL
-        value: "true"
+        value: "false"
       - key: SESSION_SECRET
         generateValue: true
+      # Public address used in email links.
       - key: APP_URL
-        sync: false
+        value: https://gog.gania.tech
       - key: DEMO_MODE
         value: "true"
       - key: SEED_DEMO_DATA
