@@ -207,3 +207,38 @@ test('FR 9: tasks, milestones, notes, posts, files and progress', async () => {
   assert.equal((await alice.raw('POST', `/projects/${ctx.projectId}/files`, bad)).status, 400, 'only approved file types');
 });
 
+test('FR 10: notifications are created and can be marked read', async () => {
+  const n = await alice.get('/notifications');
+  assert.ok(n.data.notifications.some((x) => x.type === 'invitation'));
+  assert.equal((await alice.post('/notifications/read-all')).status, 200);
+  assert.equal((await alice.get('/notifications')).data.unread, 0);
+});
+
+test('FR 11: dashboards respond by role', async () => {
+  const d = await owner.get('/dashboard');
+  assert.ok(d.data.owner.challenges.some((c) => c.id === ctx.challengeId));
+});
+
+test('FR 12: admin actions and audit log; non-admins are refused', async () => {
+  assert.equal((await alice.get('/admin/summary')).status, 403);
+  const login = await admin.post('/auth/login', { email: 'admin@gog.rw', password: 'Demo1234' });
+  assert.equal(login.status, 200, 'seeded admin account must exist');
+  const report = await alice.post('/reports', { target_type: 'user', target_id: ctx.outsider.id, reason: 'Spam' });
+  assert.equal(report.status, 201);
+  assert.equal((await admin.post(`/admin/users/${ctx.outsider.id}/ban`, { reason: 'Spam' })).status, 200);
+  assert.equal((await outsider.get('/dashboard')).status, 401, 'suspended user loses access at once');
+  const audit = await admin.get('/admin/audit');
+  assert.ok(audit.data.entries.some((e) => e.action === 'suspend_user'));
+  const pilot = await admin.get('/admin/pilot-report');
+  assert.equal(pilot.status, 200);
+  assert.equal(pilot.data.targets.length, 6);
+});
+
+test('Section 5.3: account locks after 5 failed logins', async () => {
+  const c = client();
+  let last;
+  for (let i = 0; i < 5; i++) last = await c.post('/auth/login', { email: ctx.bob.email, password: 'wrong-password1' });
+  assert.equal(last.status, 423);
+  const right = await c.post('/auth/login', { email: ctx.bob.email, password: 'Passw0rd!' });
+  assert.equal(right.status, 423, 'still locked even with the right password');
+});
