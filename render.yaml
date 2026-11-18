@@ -16,6 +16,9 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    # Custom domain. Its DNS needs a CNAME record pointing to the onrender.com address.
+    domains:
+      - gog.gania.tech
     envVars:
       - key: NODE_ENV
         value: production
@@ -30,8 +33,9 @@ services:
         value: "false"
       - key: SESSION_SECRET
         generateValue: true
+      # Public address used in email links.
       - key: APP_URL
-        sync: false
+        value: https://gog.gania.tech
       - key: DEMO_MODE
         value: "true"
       - key: SEED_DEMO_DATA
