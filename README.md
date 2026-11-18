@@ -218,17 +218,18 @@ You do not create the database by hand. The blueprint in `render.yaml` asks Rend
 
 Note: Render's free databases expire 30 days after they are created. To keep the app running longer, upgrade the database plan, or use a free database from Neon (https://neon.tech) and set its connection string as `DATABASE_URL` with `DATABASE_SSL=true`.
 
-### 2. Create the web service on Render
+### 2. Create the app on Render
 
-1. Sign up at https://render.com with GitHub.
-2. Click **New** → **Blueprint** and choose this repository. Render reads `render.yaml`.
-3. When asked, fill in:
-   - `DATABASE_URL`: the Neon connection string
-   - `APP_URL`: the address Render gives the service, for example `https://global-opportunity-gateway.onrender.com`
-4. Click **Apply**. Render runs `npm install && npm run build` and then `npm start`.
-5. When the deploy finishes, open the URL. The tables and the demo data are created on the first start.
+1. Sign up at https://render.com with your GitHub account.
+2. Click **New** → **Blueprint** and choose this repository. Render reads `render.yaml` and shows the database `gog-db` and the web service `global-opportunity-gateway`.
+3. Click **Apply**. Render creates the database, then runs `npm install && npm run build` and `npm start`.
+4. When the deploy finishes, open the `onrender.com` address shown on the service page. The tables and the demo data are created on the first start.
 
-If you prefer to create the service by hand instead of with the blueprint, use **New** → **Web Service**, runtime Node, build command `npm install && npm run build`, start command `npm start`, and add these environment variables: `NODE_ENV=production`, `DATABASE_URL`, `DATABASE_SSL=true`, `SESSION_SECRET` (any long random text), `APP_URL`, `DEMO_MODE=true`, `SEED_DEMO_DATA=true`.
+If you prefer to set it up by hand instead of with the blueprint:
+
+1. Create a database with **New** → **Postgres** (plan Free) and copy its **Internal Database URL**.
+2. Create the app with **New** → **Web Service**, runtime Node, build command `npm install && npm run build`, start command `npm start`.
+3. Add these environment variables: `NODE_ENV=production`, `DATABASE_URL` (the internal URL), `DATABASE_SSL=false`, `SESSION_SECRET` (any long random text), `APP_URL` (the public address), `DEMO_MODE=true`, `SEED_DEMO_DATA=true`.
 
 Note: the free Render plan sleeps after 15 minutes without visits, so the first page load after a break can take up to a minute.
 
