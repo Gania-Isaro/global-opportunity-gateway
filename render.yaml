@@ -1,5 +1,5 @@
-# Render blueprint for GOG. The database is hosted on Neon (free tier),
-# so DATABASE_URL is entered in the Render dashboard.
+# Render blueprint for GOG. Render creates both the PostgreSQL database
+# and the web service, and links them together.
 databases:
   - name: gog-db
     databaseName: gog
@@ -12,6 +12,7 @@ services:
     name: global-opportunity-gateway
     runtime: node
     plan: free
+    region: frankfurt
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
