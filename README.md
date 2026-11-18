@@ -208,14 +208,15 @@ npm test
 
 ---
 
-## Deployment (Render and Neon)
+## Deployment (Render)
 
-This is how I deployed the live version for free.
+This is how I deployed the live version for free. Render hosts both the web app and the PostgreSQL database.
 
-### 1. Create the database on Neon
+### 1. The database
 
-1. Sign up at https://neon.tech and create a project.
-2. Copy the connection string from the dashboard. It ends with `?sslmode=require`.
+You do not create the database by hand. The blueprint in `render.yaml` asks Render to create a free PostgreSQL database called `gog-db` and connects it to the web service automatically.
+
+Note: Render's free databases expire 30 days after they are created. To keep the app running longer, upgrade the database plan, or use a free database from Neon (https://neon.tech) and set its connection string as `DATABASE_URL` with `DATABASE_SSL=true`.
 
 ### 2. Create the web service on Render
 
