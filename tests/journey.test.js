@@ -33,3 +33,31 @@ function client() {
   };
 }
 
+async function signUp(c, role, name) {
+  const email = `${name.toLowerCase()}.${stamp}@test.rw`;
+  const reg = await c.post('/auth/register', { fullName: name, email, password: 'Passw0rd!', role });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  const token = new URL(reg.data.demoLink).searchParams.get('token');
+  const confirm = await c.post('/auth/confirm', { token });
+  assert.equal(confirm.status, 200);
+  const login = await c.post('/auth/login', { email, password: 'Passw0rd!' });
+  assert.equal(login.status, 200);
+  return { email, id: login.data.user.id };
+}
+
+const owner = client();
+const alice = client();
+const bob = client();
+const outsider = client();
+const admin = client();
+const ctx = {};
+
+test('FR 1: register, confirm email and log in', async () => {
+  ctx.owner = await signUp(owner, 'owner', 'Owner');
+  ctx.alice = await signUp(alice, 'participant', 'Alice');
+  ctx.bob = await signUp(bob, 'participant', 'Bob');
+  ctx.outsider = await signUp(outsider, 'participant', 'Outsider');
+  const me = await owner.get('/auth/me');
+  assert.equal(me.data.user.email, ctx.owner.email);
+});
+
