@@ -180,3 +180,30 @@ test('FR 9.1 / NFR 4: workspace is private to the team', async () => {
   assert.equal((await client().get(`/projects/${ctx.projectId}`)).status, 401);
 });
 
+test('FR 9: tasks, milestones, notes, posts, files and progress', async () => {
+  const t = await alice.post(`/projects/${ctx.projectId}/tasks`, { title: 'Interview users', assignee_id: ctx.alice.id });
+  assert.equal(t.status, 201);
+  await alice.put(`/projects/${ctx.projectId}/tasks/${t.data.task.id}`, { status: 'done' });
+  await alice.post(`/projects/${ctx.projectId}/tasks`, { title: 'Write report' });
+
+  const blocked = await alice.post(`/projects/${ctx.projectId}/milestones`, { title: 'Member cannot add' });
+  assert.equal(blocked.status, 403, 'FR 9.7: only the owner sets milestones');
+  const m = await owner.post(`/projects/${ctx.projectId}/milestones`, { title: 'Research done' });
+  assert.equal(m.status, 201);
+
+  const ov = await owner.get(`/projects/${ctx.projectId}`);
+  assert.equal(ov.data.progress.percent, 33, 'FR 9.8: 1 of 3 items done');
+
+  assert.equal((await alice.post(`/projects/${ctx.projectId}/notes`, { title: 'Source', link: 'https://example.org' })).status, 201);
+  const post = await alice.post(`/projects/${ctx.projectId}/posts`, { body: 'Hello team' });
+  assert.equal(post.status, 201);
+  assert.equal((await owner.post(`/projects/${ctx.projectId}/posts`, { body: 'Hi', parent_id: post.data.post.id })).status, 201);
+
+  const fd = new FormData();
+  fd.append('file', new Blob(['a,b\n1,2\n'], { type: 'text/csv' }), 'data.csv');
+  assert.equal((await alice.raw('POST', `/projects/${ctx.projectId}/files`, fd)).status, 201);
+  const bad = new FormData();
+  bad.append('file', new Blob(['MZ'], { type: 'application/x-msdownload' }), 'virus.exe');
+  assert.equal((await alice.raw('POST', `/projects/${ctx.projectId}/files`, bad)).status, 400, 'only approved file types');
+});
+
