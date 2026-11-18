@@ -157,3 +157,26 @@ test('FR 7: owner reviews, accepts and invites; BR 2 others cannot decide', asyn
   assert.equal(invite.status, 200);
 });
 
+test('BR 5: no team before at least one confirmed participant', async () => {
+  const r = await owner.post(`/challenges/${ctx.challengeId}/project`, { name: 'Too early' });
+  assert.equal(r.status, 400);
+});
+
+test('FR 7.4 / FR 8: participant confirms and owner forms the team', async () => {
+  const inv = await alice.get('/invitations/mine');
+  const mine = inv.data.invitations.find((i) => i.challenge_id === ctx.challengeId);
+  const confirm = await alice.post(`/invitations/${mine.id}/respond`, { response: 'confirmed' });
+  assert.equal(confirm.status, 200);
+  const team = await owner.post(`/challenges/${ctx.challengeId}/project`, { name: 'Journey team' });
+  assert.equal(team.status, 201);
+  ctx.projectId = team.data.project.id;
+  const again = await owner.post(`/challenges/${ctx.challengeId}/project`, { name: 'Second team' });
+  assert.equal(again.status, 400, 'BR 6: one project per challenge');
+});
+
+test('FR 9.1 / NFR 4: workspace is private to the team', async () => {
+  assert.equal((await alice.get(`/projects/${ctx.projectId}`)).status, 200);
+  assert.equal((await outsider.get(`/projects/${ctx.projectId}`)).status, 403);
+  assert.equal((await client().get(`/projects/${ctx.projectId}`)).status, 401);
+});
+
