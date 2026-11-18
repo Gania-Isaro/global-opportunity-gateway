@@ -231,6 +231,18 @@ If you prefer to set it up by hand instead of with the blueprint:
 2. Create the app with **New** → **Web Service**, runtime Node, build command `npm install && npm run build`, start command `npm start`.
 3. Add these environment variables: `NODE_ENV=production`, `DATABASE_URL` (the internal URL), `DATABASE_SSL=false`, `SESSION_SECRET` (any long random text), `APP_URL` (the public address), `DEMO_MODE=true`, `SEED_DEMO_DATA=true`.
 
+### 3. Connect the custom domain
+
+The blueprint already adds `gog.gania.tech` to the web service. To make it work:
+
+1. On the service page in Render, open **Settings** → **Custom Domains** and copy the `onrender.com` address shown there.
+2. Where the domain's DNS is managed, add a **CNAME** record:
+   - Name / Host: `gog`
+   - Value / Target: the `onrender.com` address from step 1
+3. Back in Render, click **Verify**. Render then issues the HTTPS certificate on its own, usually within a few minutes.
+
+If you deploy your own copy with a different domain, change `domains` and `APP_URL` in `render.yaml`, or delete the `domains` lines and set `APP_URL` to the `onrender.com` address.
+
 Note: the free Render plan sleeps after 15 minutes without visits, so the first page load after a break can take up to a minute.
 
 ### Real emails (optional)
