@@ -61,3 +61,24 @@ test('FR 1: register, confirm email and log in', async () => {
   assert.equal(me.data.user.email, ctx.owner.email);
 });
 
+test('FR 1.1: duplicate email is refused', async () => {
+  const r = await client().post('/auth/register', { fullName: 'X', email: ctx.alice.email, password: 'Passw0rd!', role: 'participant' });
+  assert.equal(r.status, 400);
+});
+
+test('CSRF: requests without the custom header are blocked', async () => {
+  const res = await fetch(BASE + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: ctx.alice.email, password: 'Passw0rd!' }),
+  });
+  assert.equal(res.status, 403);
+});
+
+test('BR 1: an incomplete profile cannot create a challenge', async () => {
+  const r = await owner.post('/challenges', {
+    title: 'Test', description: 'd', sector: 'Health', skills: ['x'], outcome: 'o', deadline: '2099-01-01', team_size: 2,
+  });
+  assert.equal(r.status, 403);
+});
+
