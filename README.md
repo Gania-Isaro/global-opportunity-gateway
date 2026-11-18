@@ -6,9 +6,9 @@ GOG is a web platform I built for people in Kigali who have global experience, k
 
 | Link | |
 |---|---|
-| Live app | _add your Render URL here_ |
-| Demo video | _add your video link here_ |
-| SRS and system design | _add your SRS document link here_ |
+| Live app | https://gog.gania.tech |
+| Demo video | Coming soon |
+| SRS and system design | Coming soon |
 
 ---
 
