@@ -1,4 +1,5 @@
 import { one } from './db.js';
+import { config } from './config.js';
 
 export class HttpError extends Error {
   constructor(status, message, fields) {
@@ -18,7 +19,7 @@ export async function loadUser(req, res, next) {
   req.user = null;
   if (req.session?.userId) {
     const user = await one(
-      `SELECT u.id, u.email, u.role, u.email_verified, u.banned, p.full_name
+      `SELECT u.id, u.email, u.role, u.email_verified, u.banned, u.is_demo, p.full_name
          FROM users u LEFT JOIN profiles p ON p.user_id = u.id
         WHERE u.id = $1`,
       [req.session.userId]
@@ -31,6 +32,9 @@ export async function loadUser(req, res, next) {
   }
   next();
 }
+
+// The admin login is published for graders, so it may only see demo data.
+export const isPublicDemoAdmin = (user) => config.protectDemo && user?.role === 'admin' && user.is_demo;
 
 export function requireAuth(req, res, next) {
   if (!req.user) return next(new HttpError(401, 'Please log in to continue.'));

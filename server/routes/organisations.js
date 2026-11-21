@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { one, many, tx } from '../db.js';
-import { fail, requireAuth, requireVerified } from '../middleware.js';
+import { config } from '../config.js';
+import { fail, isPublicDemoAdmin, requireAuth, requireVerified } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 import { acceptFiles } from '../uploads.js';
 import { notify } from '../notify.js';
@@ -44,7 +45,10 @@ router.post('/organisations', requireVerified, acceptFiles('documents', 5), asyn
     return row;
   });
 
-  const admins = await many("SELECT id FROM users WHERE role = 'admin'");
+  const admins = await many(
+    "SELECT id FROM users WHERE role = 'admin' AND (NOT is_demo OR NOT $1 OR $2)",
+    [config.protectDemo, req.user.is_demo]
+  );
   for (const a of admins) {
     await notify(a.id, 'org_submitted', `${org.name} is waiting for verification.`, '/admin/organisations');
   }
@@ -77,9 +81,10 @@ router.get('/organisations/:id', async (req, res) => {
 
 // Supporting documents are visible to the representative and administrators only.
 router.get('/organisations/:id/documents/:docId', requireAuth, async (req, res) => {
-  const org = await one('SELECT rep_user_id FROM organisations WHERE id = $1', [idParam(req.params.id)]);
+  const org = await one('SELECT o.rep_user_id, u.is_demo FROM organisations o JOIN users u ON u.id = o.rep_user_id WHERE o.id = $1', [idParam(req.params.id)]);
   if (!org) fail(404, 'Not found.');
-  if (req.user.role !== 'admin' && org.rep_user_id !== req.user.id) fail(403, 'You do not have permission to do that.');
+  const adminAllowed = req.user.role === 'admin' && (!isPublicDemoAdmin(req.user) || org.is_demo);
+  if (!adminAllowed && org.rep_user_id !== req.user.id) fail(403, 'You do not have permission to do that.');
   const doc = await one(
     'SELECT filename, mime, data FROM organisation_documents WHERE id = $1 AND org_id = $2',
     [idParam(req.params.docId), idParam(req.params.id)]

@@ -16,7 +16,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
   const uid = req.user.id;
 
   if (req.user.role === 'admin') {
-    return res.json({ role: 'admin', admin: await adminSummary() });
+    return res.json({ role: 'admin', admin: await adminSummary(req.user) });
   }
 
   const applications = await many(
