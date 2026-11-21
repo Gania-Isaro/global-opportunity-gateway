@@ -20,6 +20,17 @@ export async function autoCloseChallenges() {
   return rowCount;
 }
 
+// Accepted applicants hold a team place unless they declined the invitation.
+export async function teamPlacesTaken(db, challengeId) {
+  const { rows: [r] } = await db.query(
+    `SELECT count(*)::int AS n FROM applications a
+       LEFT JOIN invitations i ON i.application_id = a.id
+      WHERE a.challenge_id = $1 AND a.status = 'accepted' AND COALESCE(i.status, 'sent') <> 'declined'`,
+    [challengeId]
+  );
+  return r.n;
+}
+
 const CHALLENGE_SELECT = `
   SELECT c.*, p.full_name AS owner_name,
          CASE WHEN o.status = 'verified' THEN o.id END AS org_id,
@@ -167,6 +178,10 @@ router.put('/challenges/:id', requireVerified, async (req, res) => {
   if (c.status === 'closed') fail(400, 'A closed challenge cannot be edited.');
   const d = validate(req.body, challengeRules);
   if (c.status === 'published') assertFutureDeadline(d.deadline);
+  const taken = await teamPlacesTaken({ query }, c.id);
+  if (d.team_size < taken) {
+    fail(400, 'Please fix the highlighted fields.', { team_size: `You have already accepted ${taken} participants.` });
+  }
   const updated = await one(
     `UPDATE challenges SET title=$2, description=$3, sector=$4, skills=$5, outcome=$6, deadline=$7, team_size=$8
       WHERE id=$1 RETURNING *`,

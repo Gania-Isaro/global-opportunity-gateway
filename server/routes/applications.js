@@ -3,7 +3,7 @@ import { one, many, query, tx } from '../db.js';
 import { fail, requireAuth, requireVerified } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 import { notify } from '../notify.js';
-import { autoCloseChallenges } from './challenges.js';
+import { autoCloseChallenges, teamPlacesTaken } from './challenges.js';
 
 const router = Router();
 
@@ -125,8 +125,16 @@ router.post('/applications/:id/decision', requireAuth, async (req, res) => {
   const { decision } = validate(req.body, {
     decision: { required: true, type: 'enum', values: ['accepted', 'rejected'], label: 'Decision' },
   });
-  if (!['submitted', 'under_review'].includes(a.status)) fail(400, 'A decision has already been made on this application.');
-  await query('UPDATE applications SET status = $2, decided_at = now() WHERE id = $1', [a.id, decision]);
+  await tx(async (cl) => {
+    // The lock stops two decisions from filling the same team place.
+    const { rows: [c] } = await cl.query('SELECT team_size FROM challenges WHERE id = $1 FOR UPDATE', [a.challenge_id]);
+    const { rows: [current] } = await cl.query('SELECT status FROM applications WHERE id = $1', [a.id]);
+    if (!['submitted', 'under_review'].includes(current.status)) fail(400, 'A decision has already been made on this application.');
+    if (decision === 'accepted' && await teamPlacesTaken(cl, a.challenge_id) >= c.team_size) {
+      fail(400, `This team is full. The team size is ${c.team_size}.`);
+    }
+    await cl.query('UPDATE applications SET status = $2, decided_at = now() WHERE id = $1', [a.id, decision]);
+  });
   const msg = decision === 'accepted'
     ? `Good news: your application to "${a.challenge_title}" was accepted. Watch for an invitation to join the team.`
     : `Your application to "${a.challenge_title}" was not selected this time. Thank you for applying.`;
@@ -174,6 +182,7 @@ router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
     [idParam(req.params.id)]
   );
   if (!inv || inv.participant_id !== req.user.id) fail(404, 'Invitation not found.');
+  assertNotRemoved(inv.challenge_status);
   if (inv.status !== 'sent') fail(400, 'You have already responded to this invitation.');
   const { response } = validate(req.body, {
     response: { required: true, type: 'enum', values: ['confirmed', 'declined'], label: 'Response' },
@@ -182,7 +191,6 @@ router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
   await notify(
     inv.owner_id,
     'invitation_response',
-  assertNotRemoved(inv.challenge_status);
     `${req.user.full_name} ${response === 'confirmed' ? 'confirmed' : 'declined'} the invitation for "${inv.title}".`,
     `/my-challenges/${inv.challenge_id}/applications`
   );
@@ -192,6 +200,7 @@ router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
 // FR 8.1 Form team and FR 8.2 create the project (BR 5 at least one member, BR 6 one project per challenge)
 router.post('/challenges/:id/project', requireAuth, async (req, res) => {
   const c = await ownedChallenge(idParam(req.params.id), req.user);
+  assertNotRemoved(c.status);
   const d = validate(req.body, {
     name: { required: true, label: 'Project name', max: 160 },
     members: { type: 'list', default: [] },
@@ -200,7 +209,6 @@ router.post('/challenges/:id/project', requireAuth, async (req, res) => {
   const confirmed = await many(
     `SELECT a.participant_id FROM applications a JOIN invitations i ON i.application_id = a.id
       WHERE a.challenge_id = $1 AND i.status = 'confirmed'`,
-  assertNotRemoved(c.status);
     [c.id]
   );
   const allowed = new Set(confirmed.map((r) => r.participant_id));
@@ -209,6 +217,7 @@ router.post('/challenges/:id/project', requireAuth, async (req, res) => {
     fail(400, 'At least one participant must confirm their invitation before you can form a team.');
   }
   if (ids.some((id) => !allowed.has(id))) fail(400, 'Only participants who confirmed their invitation can join the team.');
+  if (chosen.length > c.team_size) fail(400, `This team can have at most ${c.team_size} participants.`);
 
   const project = await tx(async (cl) => {
     const exists = await cl.query('SELECT id FROM projects WHERE challenge_id = $1', [c.id]);
