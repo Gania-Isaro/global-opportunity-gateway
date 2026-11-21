@@ -5,7 +5,7 @@ import { Alert } from './ui.jsx';
 
 function Logo() {
   return (
-    <Link to="/" className="logo" aria-label="GOG home">
+    <Link to="/" className="logo">
       <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
         <rect width="64" height="64" rx="14" fill="currentColor" />
         <circle cx="32" cy="32" r="16" fill="none" stroke="#f5b83d" strokeWidth="5" />
