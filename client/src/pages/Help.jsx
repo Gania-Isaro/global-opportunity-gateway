@@ -59,6 +59,9 @@ export default function Help() {
           <li><Link to="/challenges">Browse challenges</Link>, use search and filters, and open one that fits you.</li>
           <li>Apply with a short motivation and follow its status in <Link to="/applications">My applications</Link>.</li>
           <li>When invited, confirm in <Link to="/invitations">Invitations</Link>. Your team workspace appears in <Link to="/projects">Projects</Link>.</li>
+          <li>In the workspace, update your tasks, add research notes, share files and join discussions.</li>
+          <li>Check <Link to="/notifications">Notifications</Link> for decisions, invitations and team updates.</li>
+          <li>Changed your mind before a decision? Withdraw the application from My applications.</li>
         </ol>
 
         <h2>Quick guide for challenge owners</h2>
@@ -67,8 +70,13 @@ export default function Help() {
           <li>If you represent an organisation, <Link to="/organisation">register it</Link> for the Verified badge (optional).</li>
           <li><Link to="/challenges/new">Post a challenge</Link>. Save it as a draft or publish it.</li>
           <li>Review applications, accept the best fit and send invitations.</li>
-          <li>Form the team. Use the workspace to add tasks, milestones, research, files and discussions.</li>
+          <li>Form the team once at least one person confirms. A private workspace is created for it.</li>
+          <li>Assign team roles, then add tasks and milestones. Progress is calculated automatically.</li>
+          <li>Close a challenge early if you have enough applicants. It also closes by itself after the deadline.</li>
+          <li>Mark the project complete when the work is finished.</li>
         </ol>
+
+        <p><a className="btn btn-outline" href="/GOG-user-guide.pdf" download>Download the user guide (PDF)</a></p>
       </section>
 
       {user?.role === 'admin' && (
