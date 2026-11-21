@@ -179,31 +179,47 @@ router.get('/admin/audit', ...admin, async (req, res) => {
 
 // FR 12.5 Pilot report against the SMART targets in Section 1.4
 router.get('/admin/pilot-report', ...admin, async (req, res) => {
+  // The demo administrator sees demo data. A real administrator sees only real data.
+  const demo = Boolean(req.user.is_demo);
   const m = await one(
-    `SELECT (SELECT count(*) FROM users WHERE role <> 'admin' AND email_verified)::int AS participants,
-            (SELECT count(*) FROM challenges WHERE status IN ('published','closed'))::int AS published,
-            (SELECT count(*) FROM challenges c WHERE status IN ('published','closed') AND c.org_id IS NOT NULL)::int AS published_by_org,
-            (SELECT count(*) FROM challenges c WHERE status IN ('published','closed') AND c.org_id IS NULL)::int AS published_by_individual,
-            (SELECT count(*) FROM applications)::int AS applications,
-            (SELECT count(*) FROM projects p
+    `WITH pub AS (
+       SELECT c.id, (o.status = 'verified') IS TRUE AS by_org
+         FROM challenges c JOIN users u ON u.id = c.owner_id
+         LEFT JOIN organisations o ON o.id = c.org_id
+        WHERE c.status IN ('published','closed') AND u.is_demo = $1
+     ), proj AS (
+       SELECT p.* FROM projects p JOIN users u ON u.id = p.owner_id WHERE u.is_demo = $1
+     )
+     SELECT (SELECT count(*) FROM users WHERE role = 'participant' AND email_verified AND is_demo = $1)::int AS participants,
+            (SELECT count(*) FROM pub)::int AS published,
+            (SELECT count(*) FROM pub WHERE by_org)::int AS published_by_org,
+            (SELECT count(*) FROM pub WHERE NOT by_org)::int AS published_by_individual,
+            (SELECT count(*) FROM applications a JOIN users u ON u.id = a.participant_id WHERE u.is_demo = $1)::int AS applications,
+            (SELECT count(*) FROM proj p
               WHERE (SELECT count(*) FROM project_members m WHERE m.project_id = p.id) >= 3)::int AS teams_of_three,
-            (SELECT count(*) FROM projects)::int AS teams_total,
-            (SELECT count(*) FROM projects p
+            (SELECT count(*) FROM proj)::int AS teams_total,
+            (SELECT count(*) FROM proj p
               WHERE (SELECT count(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done'
                        AND t.completed_at <= p.created_at + interval '8 weeks') >= 4)::int AS active_teams,
-            (SELECT count(*) FROM audit_log)::int AS admin_actions`
+            (SELECT count(*) FROM workspace_denials WHERE is_demo = $1)::int AS denied_access,
+            (SELECT count(*) FROM audit_log)::int AS admin_actions`,
+    [demo]
   );
   const targets = [
     { label: 'Registered participants', target: 50, actual: m.participants },
     { label: 'Published challenges', target: 10, actual: m.published,
+      needsBoth: m.published_by_org > 0 && m.published_by_individual > 0,
       note: `${m.published_by_org} by organisations, ${m.published_by_individual} by individuals` },
     { label: 'Applications submitted', target: 30, actual: m.applications },
     { label: 'Teams formed (3 or more people)', target: 5, actual: m.teams_of_three, note: `${m.teams_total} teams in total` },
     { label: 'Active teams (4+ tasks done within 8 weeks)', target: 2, actual: m.active_teams },
-    { label: 'Unauthorised workspace access', target: 0, actual: 0, lowerIsBetter: true,
-      note: 'Every workspace request is checked on the server and refused if the user is not on the team.' },
-  ].map((t) => ({ ...t, met: t.lowerIsBetter ? t.actual <= t.target : t.actual >= t.target }));
-  res.json({ generated_at: new Date(), targets, metrics: m });
+    { label: 'Unauthorised workspace access attempts', target: 0, actual: m.denied_access, lowerIsBetter: true,
+      note: 'Counts requests the server blocked. Each one should be reviewed.' },
+  ].map(({ needsBoth, ...t }) => ({
+    ...t,
+    met: t.lowerIsBetter ? t.actual <= t.target : t.actual >= t.target && needsBoth !== false,
+  }));
+  res.json({ generated_at: new Date(), data_scope: demo ? 'demo' : 'real', targets, metrics: m });
 });
 
 export default router;
