@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import ReportButton from '../components/ReportButton.jsx';
@@ -7,7 +7,7 @@ import { Alert, Field, LoadError, Loading, PageHeader, SkillTags, VerifiedBadge,
 
 // FR 2.1 Manage profile, FR 2.2 Interests and experiences
 export function Profile() {
-  const { refresh } = useAuth();
+  const { refresh, user } = useAuth();
   const { data, error, loading } = useLoad(() => api.get('/profile'), []);
   const [form, setForm] = useState(null);
   const [status, setStatus] = useState(null);
@@ -78,7 +78,47 @@ export function Profile() {
           <button className="btn btn-primary" disabled={s.busy}>{s.busy ? 'Saving...' : 'Save profile'}</button>
         </div>
       </form>
+      {user?.role !== 'admin' && <DeleteAccount />}
     </div>
+  );
+}
+
+// NFR 15 Delete my account, with a confirmation step
+function DeleteAccount() {
+  const { refresh } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const s = useSubmit();
+
+  const confirm = (e) => {
+    e.preventDefault();
+    s.submit(async () => {
+      await api.post('/auth/delete-account', { password });
+      await refresh();
+      navigate('/', { replace: true });
+    });
+  };
+
+  return (
+    <section className="card form-card" aria-labelledby="delete-account-title">
+      <h2 className="form-section" id="delete-account-title">Delete my account</h2>
+      <p>This permanently removes your profile, applications, challenges and notifications. It cannot be undone.</p>
+      {!open ? (
+        <button type="button" className="btn btn-danger" onClick={() => setOpen(true)}>Delete my account</button>
+      ) : (
+        <form onSubmit={confirm} noValidate>
+          <Alert>{s.error}</Alert>
+          <Field label="Enter your password to confirm" error={s.fields.password} required>
+            {(p) => <input {...p} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
+          </Field>
+          <div className="form-actions">
+            <button className="btn btn-danger" disabled={s.busy}>{s.busy ? 'Deleting...' : 'Yes, delete my account'}</button>
+            <button type="button" className="btn btn-ghost" onClick={() => { setOpen(false); setPassword(''); }}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 
