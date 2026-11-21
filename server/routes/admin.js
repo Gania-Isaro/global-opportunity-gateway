@@ -76,6 +76,10 @@ router.post('/admin/organisations/:id/decision', ...admin, async (req, res) => {
     'UPDATE organisations SET status = $2, rejection_reason = $3, reviewed_at = now() WHERE id = $1',
     [org.id, d.decision, d.decision === 'rejected' ? d.reason : null]
   );
+  // FR 3.4: challenges posted before verification also get the badge.
+  if (d.decision === 'verified') {
+    await query('UPDATE challenges SET org_id = $1 WHERE owner_id = $2 AND org_id IS NULL', [org.id, org.rep_user_id]);
+  }
   await audit(req.user.id, d.decision === 'verified' ? 'verify_organisation' : 'reject_organisation', 'organisation', org.id,
     d.decision === 'rejected' ? `${org.name}: ${d.reason}` : org.name);
   // FR 3.5 Notify the representative
