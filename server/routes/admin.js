@@ -119,7 +119,7 @@ router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
   const banned = !u.banned;
   await query('UPDATE users SET banned = $2, locked_until = NULL, failed_logins = 0 WHERE id = $1', [id, banned]);
   if (banned) await query("DELETE FROM user_sessions WHERE (sess->>'userId')::int = $1", [id]).catch(() => {});
-  await audit(req.user.id, banned ? 'suspend_user' : 'unlock_user', 'user', id, `${u.email}${reason ? `: ${reason}` : ''}`);
+  await audit(req.user.id, banned ? 'suspend_user' : 'unlock_user', 'user', id, reason || null);
   res.json({ message: banned ? 'Account suspended.' : 'Account unlocked.' });
 });
 
