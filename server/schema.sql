@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Public demo accounts, protected on the live site.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE TABLE IF NOT EXISTS profiles (
   user_id      INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   full_name    TEXT NOT NULL DEFAULT '',

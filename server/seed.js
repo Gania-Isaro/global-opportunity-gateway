@@ -66,6 +66,11 @@ const USERS = [
   },
 ];
 
+// Databases seeded before is_demo existed get their demo accounts marked here.
+export async function markDemoAccounts() {
+  await pool.query('UPDATE users SET is_demo = TRUE WHERE email = ANY($1) AND NOT is_demo', [USERS.map((u) => u.email)]);
+}
+
 export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
   if (reset) {
     await pool.query(`TRUNCATE users, organisations, challenges, applications, invitations, projects,
@@ -84,13 +89,19 @@ export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
 
     for (const u of USERS) {
       const row = await q(
-        'INSERT INTO users (email, password_hash, role, email_verified) VALUES ($1,$2,$3,TRUE) RETURNING id',
+        `INSERT INTO users (email, password_hash, role, email_verified, is_demo) VALUES ($1,$2,$3,TRUE,TRUE)
+         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, banned = FALSE,
+           failed_logins = 0, locked_until = NULL, is_demo = TRUE
+         RETURNING id`,
         [u.email, hash, u.role]
       );
       id[u.key] = row.id;
       await q(
         `INSERT INTO profiles (user_id, full_name, bio, skills, education, location, interests, experiences)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, bio = EXCLUDED.bio, skills = EXCLUDED.skills,
+           education = EXCLUDED.education, location = EXCLUDED.location, interests = EXCLUDED.interests,
+           experiences = EXCLUDED.experiences`,
         [row.id, u.name, u.bio || '', u.skills || [], u.education || '', u.location || '', u.interests || '', u.experiences || '']
       );
     }
