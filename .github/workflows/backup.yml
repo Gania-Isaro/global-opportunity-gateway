@@ -1,0 +1,46 @@
+# Daily encrypted database backup (NFR 16).
+# Needs two repository secrets: BACKUP_DATABASE_URL and BACKUP_PASSPHRASE.
+name: Daily database backup
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      PGSSLMODE: require
+      PG_BIN: /usr/lib/postgresql/18/bin
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ env.BACKUP_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' }}
+      - uses: actions/setup-node@v4
+        if: ${{ env.BACKUP_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' }}
+        with:
+          node-version: 22
+      - name: Install the PostgreSQL client
+        if: ${{ env.BACKUP_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+      - name: Create the encrypted backup
+        if: ${{ env.BACKUP_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' }}
+        run: |
+          npm ci --omit=dev
+          node scripts/backup.js
+      - uses: actions/upload-artifact@v4
+        if: ${{ env.BACKUP_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' }}
+        with:
+          name: gog-backup-${{ github.run_id }}
+          path: backups/*.enc
+          retention-days: 14
+          if-no-files-found: error
