@@ -16,8 +16,8 @@ export async function notify(userId, type, message, link = null) {
     [userId, type, message, link]
   );
   if (EMAIL_TYPES.has(type)) {
-    const user = await one('SELECT email FROM users WHERE id = $1', [userId]);
-    if (user) {
+    const user = await one('SELECT email, is_demo FROM users WHERE id = $1', [userId]);
+    if (user && !user.is_demo) {
       const url = link ? `\n\nOpen it here: ${config.appUrl}${link}` : '';
       await sendEmail(user.email, 'GOG notification', `${message}${url}\n\nGOG (Global Opportunity Gateway)`);
     }

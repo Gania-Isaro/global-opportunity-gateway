@@ -178,10 +178,7 @@ export function ForgotPassword() {
     <AuthCard title="Reset your password" subtitle="Enter your email and we will send you a reset link.">
       <Alert>{error}</Alert>
       {done ? (
-        <>
-          <Alert type="success">{done.message}</Alert>
-          <DemoLink link={done.demoLink} label="Choose a new password" />
-        </>
+        <Alert type="success">{done.message}</Alert>
       ) : (
         <form onSubmit={onSubmit} noValidate>
           <Field label="Email address" error={fields.email} required>

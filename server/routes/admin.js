@@ -1,13 +1,22 @@
 import { Router } from 'express';
 import { one, many, query } from '../db.js';
-import { fail, requireAuth, requireRole } from '../middleware.js';
+import { config } from '../config.js';
+import { fail, isPublicDemoAdmin, requireAuth, requireRole } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 import { notify, audit } from '../notify.js';
 
 const router = Router();
 const admin = [requireAuth, requireRole('admin')];
 
-export async function adminSummary() {
+const DEMO_ONLY = 'The public demo administrator can only change demo data.';
+
+async function assertDemoTarget(req, userId) {
+  if (!isPublicDemoAdmin(req.user)) return;
+  const target = userId ? await one('SELECT is_demo FROM users WHERE id = $1', [userId]) : null;
+  if (!target?.is_demo) fail(403, DEMO_ONLY);
+}
+
+export async function adminSummary(user) {
   const counts = await one(
     `SELECT (SELECT count(*) FROM users WHERE role <> 'admin')::int AS users,
             (SELECT count(*) FROM users WHERE banned)::int AS banned_users,
@@ -22,14 +31,15 @@ export async function adminSummary() {
   const pending = await many(
     `SELECT o.id, o.name, o.sector, o.created_at, p.full_name AS rep_name
        FROM organisations o JOIN profiles p ON p.user_id = o.rep_user_id
-      WHERE o.status = 'pending' ORDER BY o.created_at ASC`
+       JOIN users u ON u.id = o.rep_user_id
+      WHERE o.status = 'pending' ${isPublicDemoAdmin(user) ? 'AND u.is_demo' : ''} ORDER BY o.created_at ASC`
   );
   return { counts, pending };
 }
 
 // FR 11.3 Administrator dashboard
 router.get('/admin/summary', ...admin, async (req, res) => {
-  res.json(await adminSummary());
+  res.json(await adminSummary(req.user));
 });
 
 // FR 3.3 Organisation verification
@@ -43,7 +53,7 @@ router.get('/admin/organisations', ...admin, async (req, res) => {
        JOIN users u ON u.id = o.rep_user_id
        JOIN profiles p ON p.user_id = o.rep_user_id
        LEFT JOIN organisation_documents d ON d.org_id = o.id
-      ${status ? 'WHERE o.status = $1' : ''}
+      WHERE TRUE ${status ? 'AND o.status = $1' : ''} ${isPublicDemoAdmin(req.user) ? 'AND u.is_demo' : ''}
       GROUP BY o.id, p.full_name, u.email
       ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
     status ? [status] : []
@@ -54,6 +64,7 @@ router.get('/admin/organisations', ...admin, async (req, res) => {
 router.post('/admin/organisations/:id/decision', ...admin, async (req, res) => {
   const org = await one('SELECT * FROM organisations WHERE id = $1', [idParam(req.params.id)]);
   if (!org) fail(404, 'Organisation not found.');
+  await assertDemoTarget(req, org.rep_user_id);
   const d = validate(req.body, {
     decision: { required: true, type: 'enum', values: ['verified', 'rejected'], label: 'Decision' },
     reason: { max: 500 },
@@ -82,10 +93,10 @@ router.post('/admin/organisations/:id/decision', ...admin, async (req, res) => {
 // FR 12.1 Manage accounts
 router.get('/admin/users', ...admin, async (req, res) => {
   const params = [];
-  let where = '';
+  let where = isPublicDemoAdmin(req.user) ? 'WHERE u.is_demo' : 'WHERE TRUE';
   if (req.query.q) {
     params.push(`%${req.query.q}%`);
-    where = 'WHERE u.email ILIKE $1 OR p.full_name ILIKE $1';
+    where += ' AND (u.email ILIKE $1 OR p.full_name ILIKE $1)';
   }
   const rows = await many(
     `SELECT u.id, u.email, u.role, u.email_verified, u.banned, u.created_at, u.locked_until, p.full_name
@@ -99,8 +110,10 @@ router.get('/admin/users', ...admin, async (req, res) => {
 router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
   const id = idParam(req.params.id);
   if (id === req.user.id) fail(400, 'You cannot suspend your own account.');
-  const u = await one('SELECT id, email, role, banned FROM users WHERE id = $1', [id]);
+  const u = await one('SELECT id, email, role, banned, is_demo FROM users WHERE id = $1', [id]);
   if (!u) fail(404, 'User not found.');
+  if (isPublicDemoAdmin(req.user)) fail(403, DEMO_ONLY);
+  if (config.protectDemo && u.is_demo) fail(403, 'Demo accounts cannot be suspended on the public site.');
   if (u.role === 'admin') fail(400, 'Administrator accounts cannot be suspended here.');
   const { reason } = validate(req.body, { reason: { max: 500 } });
   const banned = !u.banned;
@@ -114,6 +127,7 @@ router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
 router.post('/admin/challenges/:id/remove', ...admin, async (req, res) => {
   const c = await one('SELECT * FROM challenges WHERE id = $1', [idParam(req.params.id)]);
   if (!c) fail(404, 'Challenge not found.');
+  await assertDemoTarget(req, c.owner_id);
   if (c.status === 'removed') fail(400, 'This challenge was already removed.');
   const { reason } = validate(req.body, { reason: { required: true, label: 'Reason', max: 500 } });
   await query("UPDATE challenges SET status = 'removed', closed_at = now() WHERE id = $1", [c.id]);
@@ -130,12 +144,17 @@ router.get('/admin/reports', ...admin, async (req, res) => {
             CASE WHEN r.target_type = 'challenge' THEN (SELECT title FROM challenges WHERE id = r.target_id)
                  ELSE (SELECT full_name FROM profiles WHERE user_id = r.target_id) END AS target_name
        FROM reports r LEFT JOIN profiles p ON p.user_id = r.reporter_id
+       LEFT JOIN users ru ON ru.id = r.reporter_id
+      ${isPublicDemoAdmin(req.user) ? 'WHERE ru.is_demo' : ''}
       ORDER BY (r.status = 'open') DESC, r.created_at DESC`
   );
   res.json({ reports: rows });
 });
 
 router.post('/admin/reports/:id/dismiss', ...admin, async (req, res) => {
+  const open = await one("SELECT reporter_id FROM reports WHERE id = $1 AND status = 'open'", [idParam(req.params.id)]);
+  if (!open) fail(404, 'Open report not found.');
+  await assertDemoTarget(req, open.reporter_id);
   const r = await one("UPDATE reports SET status = 'dismissed' WHERE id = $1 AND status = 'open' RETURNING *", [idParam(req.params.id)]);
   if (!r) fail(404, 'Open report not found.');
   await audit(req.user.id, 'dismiss_report', r.target_type, r.target_id, r.reason);
@@ -147,7 +166,9 @@ router.get('/admin/audit', ...admin, async (req, res) => {
   const rows = await many(
     `SELECT a.*, p.full_name AS admin_name FROM audit_log a
        LEFT JOIN profiles p ON p.user_id = a.admin_id
-      ORDER BY a.created_at DESC LIMIT 500`
+      ${isPublicDemoAdmin(req.user) ? 'WHERE a.admin_id = $1' : ''}
+      ORDER BY a.created_at DESC LIMIT 500`,
+    isPublicDemoAdmin(req.user) ? [req.user.id] : []
   );
   res.json({ entries: rows });
 });

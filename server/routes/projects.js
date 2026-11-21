@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { one, many, query } from '../db.js';
-import { fail, requireAuth } from '../middleware.js';
+import { fail, isPublicDemoAdmin, requireAuth } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 import { acceptFiles } from '../uploads.js';
 import { notify } from '../notify.js';
@@ -20,7 +20,11 @@ async function workspaceAccess(req, res, next) {
   if (!project) fail(404, 'Project not found.');
   const member = await one('SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2', [projectId, req.user.id]);
   const isOwner = project.owner_id === req.user.id;
-  const isAdmin = req.user.role === 'admin';
+  let isAdmin = req.user.role === 'admin';
+  if (isPublicDemoAdmin(req.user)) {
+    const projectOwner = await one('SELECT is_demo FROM users WHERE id = $1', [project.owner_id]);
+    isAdmin = Boolean(projectOwner?.is_demo);
+  }
   if (!member && !isOwner && !isAdmin) {
     fail(403, 'This workspace is private to its team.');
   }

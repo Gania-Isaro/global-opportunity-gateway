@@ -13,6 +13,9 @@ export const config = {
   // so the prototype can be tested without a real mailbox.
   demoMode: process.env.DEMO_MODE !== 'false',
   seedOnStart: process.env.SEED_DEMO_DATA === 'true',
+  // On the public site, demo logins can only touch demo data.
+  protectDemo: process.env.PROTECT_DEMO === 'true',
+  demoResetHours: Number(process.env.DEMO_RESET_HOURS) || 0,
   smtp: {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,

@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Public demo accounts, protected on the live site.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE TABLE IF NOT EXISTS profiles (
   user_id      INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   full_name    TEXT NOT NULL DEFAULT '',
@@ -195,6 +198,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
   target_id    INT,
   details      TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS app_meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS email_outbox (

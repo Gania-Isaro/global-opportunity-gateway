@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { one, many } from '../db.js';
+import { config } from '../config.js';
 import { fail, requireAuth } from '../middleware.js';
 import { validate } from '../validate.js';
 import { notify } from '../notify.js';
@@ -21,7 +22,10 @@ router.post('/reports', requireAuth, async (req, res) => {
     'INSERT INTO reports (reporter_id, target_type, target_id, reason) VALUES ($1,$2,$3,$4) RETURNING id',
     [req.user.id, d.target_type, d.target_id, d.reason]
   );
-  const admins = await many("SELECT id FROM users WHERE role = 'admin'");
+  const admins = await many(
+    "SELECT id FROM users WHERE role = 'admin' AND (NOT is_demo OR NOT $1 OR $2)",
+    [config.protectDemo, req.user.is_demo]
+  );
   for (const a of admins) await notify(a.id, 'new_report', `A ${d.target_type} was reported for review.`, '/admin/reports');
   res.status(201).json({ message: 'Thank you. An administrator will review your report.' });
 });
