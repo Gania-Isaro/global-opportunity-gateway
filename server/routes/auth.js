@@ -160,20 +160,16 @@ router.get('/me', async (req, res) => {
 router.post('/forgot', async (req, res) => {
   const { email } = validate(req.body, { email: { required: true, type: 'email' } });
   const user = await one('SELECT id, email FROM users WHERE email = $1', [email]);
-  let link;
   if (user) {
     const token = await issueToken(user.id, 'reset', 30);
-    link = `${config.appUrl}/reset-password?token=${token}`;
+    const link = `${config.appUrl}/reset-password?token=${token}`;
     await sendEmail(
       user.email,
       'Reset your GOG password',
       `Someone asked to reset the password for this account.\n\nOpen this link to choose a new password:\n${link}\n\nThe link expires in 30 minutes. If you did not ask for this, you can ignore this email.`
     );
   }
-  res.json({
-    message: 'If an account exists for that email, a reset link has been sent.',
-    demoLink: config.demoMode ? link : undefined,
-  });
+  res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
 });
 
 router.post('/reset', async (req, res) => {
