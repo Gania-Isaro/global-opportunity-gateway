@@ -55,6 +55,10 @@ Security and quality requirements I implemented:
 - CSRF protection, parameterised SQL queries (no SQL injection), React output escaping (no XSS), approved file types only (Section 5.3)
 - HTTPS redirect and security headers in production
 - Append only audit log of all administrator decisions (NFR 11, BR 10)
+- Password reset links go only to the account email, and are never shown on screen
+- Public demo logins can only see and change demo data, and the demo data resets every 24 hours
+- People can delete their own account with a password confirmation, while the audit log stays intact (NFR 15)
+- Daily encrypted database backups with a tested restore (NFR 16)
 - Responsive from 360 px phones to 1920 px desktops, keyboard navigation, labelled form fields and plain English validation messages next to each field (Section 3.1, NFR 10)
 
 ## Tech stack
@@ -86,7 +90,9 @@ When the app starts with an empty database it adds demo data. Every demo account
 | Participant | `grace@gog.rw` | Has applications in different states |
 | Participant | `patrick@gog.rw`, `sandrine@gog.rw` | Extra participants |
 
-You can also register a new account. While `DEMO_MODE=true`, the confirmation link is shown on screen right after you sign up, so you do not need a real mailbox.
+You can also register a new account. While `DEMO_MODE=true` and no mail server is connected, the confirmation link is shown on screen to the person who just signed up, so you do not need a real mailbox.
+
+On the live site, the demo accounts are protected. They cannot be locked, reset, suspended or deleted, and the demo administrator can only see and change demo data. Suspending accounts can be tried on a local copy.
 
 ---
 
@@ -188,11 +194,14 @@ Then open http://localhost:4000. If you use this mode, set `APP_URL=http://local
 | `npm start` | Start the production server |
 | `npm run seed` | Add the demo data if the database is empty |
 | `npm run seed -- --reset` | Delete all data and add the demo data again |
-| `npm test` | Run the end to end tests (the server must be running) |
+| `npm run demo:reset` | Restore only the demo data and keep real accounts |
+| `npm run db:backup` | Create a database backup in `backups/` |
+| `npm run db:restore -- backups/<file> --yes` | Restore a backup, replacing the current data |
+| `npm test` | Run the 33 end to end tests (the server must be running) |
 
 ### Tests
 
-The file `tests/journey.test.js` walks through the whole journey through the API and checks the business rules: registration and email confirmation, profile completeness, challenge creation and publishing, search, applying, duplicate and self application blocking, profile visibility, withdrawal, review and invitations, team formation, workspace privacy, tasks, milestones, progress, file type checks, notifications, dashboards, admin actions, audit log and account locking.
+The files in `tests/` cover every requirement from FR 1 to FR 12. `tests/organisations.test.js` covers organisation verification, `tests/rules.test.js` covers the remaining rules, and `tests/journey.test.js` walks through the whole journey through the API and checks the business rules: registration and email confirmation, profile completeness, challenge creation and publishing, search, applying, duplicate and self application blocking, profile visibility, withdrawal, review and invitations, team formation, workspace privacy, tasks, milestones, progress, file type checks, notifications, dashboards, admin actions, audit log and account locking.
 
 Start the server first (step 6), then in a second terminal run:
 
@@ -229,7 +238,7 @@ If you prefer to set it up by hand instead of with the blueprint:
 
 1. Create a database with **New** → **Postgres** (plan Free) and copy its **Internal Database URL**.
 2. Create the app with **New** → **Web Service**, runtime Node, build command `npm install && npm run build`, start command `npm start`.
-3. Add these environment variables: `NODE_ENV=production`, `DATABASE_URL` (the internal URL), `DATABASE_SSL=false`, `SESSION_SECRET` (any long random text), `APP_URL` (the public address), `DEMO_MODE=true`, `SEED_DEMO_DATA=true`.
+3. Add these environment variables: `NODE_ENV=production`, `DATABASE_URL` (the internal URL), `DATABASE_SSL=false`, `SESSION_SECRET` (any long random text), `APP_URL` (the public address), `DEMO_MODE=true`, `SEED_DEMO_DATA=true`, `PROTECT_DEMO=true`, `DEMO_RESET_HOURS=24`.
 
 ### 3. Connect the custom domain
 
@@ -247,7 +256,34 @@ Note: the free Render plan sleeps after 15 minutes without visits, so the first 
 
 ### Real emails (optional)
 
-To send real emails, add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` from any SMTP provider (for example Brevo or a Gmail app password). Without them, emails are printed to the server log and the links are shown on screen in demo mode.
+To send real emails, add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` from any SMTP provider (for example Brevo or a Gmail app password). If sending fails, signup still works and the person is told to resend. Without these settings, emails are printed to the server log.
+
+---
+
+## Backups and restore
+
+**Make a backup:**
+
+```bash
+npm run db:backup
+```
+
+This needs the PostgreSQL tools (`pg_dump` and `pg_restore`) on your PATH, or `PG_BIN` set to their folder. Backups go to `backups/`, which Git ignores, and the newest 14 are kept. Set `BACKUP_PASSPHRASE` to encrypt them.
+
+**Restore a backup** (this replaces the data in the database):
+
+```bash
+npm run db:restore -- backups/<file> --yes
+```
+
+**Daily backups:** `.github/workflows/backup.yml` runs every day and keeps an encrypted backup for 14 days. To turn it on, open the repository's **Settings** → **Secrets and variables** → **Actions** and add:
+
+- `BACKUP_DATABASE_URL`: the **External Database URL** from Render
+- `BACKUP_PASSPHRASE`: a long private passphrase, also needed to restore
+
+## Quality checks
+
+The speed, accessibility and browser results are in [docs/quality-report.md](docs/quality-report.md). The user guide is available on the Help page and as a [PDF](client/public/GOG-user-guide.pdf).
 
 ---
 
@@ -273,7 +309,10 @@ global-opportunity-gateway/
 │       ├── components/     Shared layout and UI pieces
 │       ├── api.js          REST API client
 │       └── styles.css      One visual style for all screens
-├── tests/                  End to end journey tests
+├── tests/                  End to end tests for FR 1 to FR 12
+├── scripts/                Database backup and restore
+├── docs/                   User guide source and quality report
+├── .github/workflows/      Daily database backup
 ├── docker-compose.yml      Local PostgreSQL
 ├── render.yaml             Render deployment blueprint
 └── .env.example            Settings template
