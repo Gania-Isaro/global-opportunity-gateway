@@ -267,7 +267,7 @@ export function AdminAudit() {
               {data.entries.map((e) => (
                 <tr key={e.id}>
                   <td data-label="When">{formatDateTime(e.created_at)}</td>
-                  <td data-label="Administrator">{e.admin_name}</td>
+                  <td data-label="Administrator">{e.admin_name || 'Account holder'}</td>
                   <td data-label="Action">{labels[e.action] || e.action}</td>
                   <td data-label="Details">{e.details}</td>
                 </tr>
