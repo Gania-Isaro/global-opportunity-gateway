@@ -3,12 +3,15 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { one, query, tx } from '../db.js';
 import { config } from '../config.js';
-import { sendEmail } from '../mailer.js';
+import { emailEnabled, sendEmail } from '../mailer.js';
 import { fail, requireAuth } from '../middleware.js';
 import { validate } from '../validate.js';
 import { profileStatus } from './profiles.js';
 
 const router = Router();
+
+// On-screen links exist only for demos without a mail server.
+const showLink = (link) => (config.demoMode && !emailEnabled ? link : undefined);
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
@@ -38,12 +41,12 @@ async function useToken(token, kind) {
 async function sendConfirmation(user) {
   const token = await issueToken(user.id, 'confirm', 60 * 24);
   const link = `${config.appUrl}/confirm-email?token=${token}`;
-  await sendEmail(
+  const delivered = await sendEmail(
     user.email,
     'Confirm your GOG account',
     `Welcome to GOG.\n\nPlease confirm your email address by opening this link:\n${link}\n\nThe link is valid for 24 hours.`
   );
-  return link;
+  return { link, delivered };
 }
 
 export async function currentUserPayload(userId) {
@@ -82,10 +85,13 @@ router.post('/register', async (req, res) => {
     await c.query('INSERT INTO profiles (user_id, full_name) VALUES ($1, $2)', [rows[0].id, data.fullName]);
     return rows[0];
   });
-  const link = await sendConfirmation(user);
+  const { link, delivered } = await sendConfirmation(user);
+  req.session.pendingConfirmUserId = user.id;
   res.status(201).json({
-    message: 'Account created. Check your email for a confirmation link.',
-    demoLink: config.demoMode ? link : undefined,
+    message: emailEnabled && !delivered
+      ? 'Account created, but the confirmation email could not be sent. Try "Resend" on the log in page in a few minutes.'
+      : 'Account created. Check your email for a confirmation link.',
+    demoLink: showLink(link),
   });
 });
 
@@ -100,10 +106,10 @@ router.post('/resend-confirmation', async (req, res) => {
   const { email } = validate(req.body, { email: { required: true, type: 'email' } });
   const user = await one('SELECT id, email, email_verified FROM users WHERE email = $1', [email]);
   let link;
-  if (user && !user.email_verified) link = await sendConfirmation(user);
+  if (user && !user.email_verified) ({ link } = await sendConfirmation(user));
   res.json({
     message: 'If that account exists and is not confirmed yet, a new link has been sent.',
-    demoLink: config.demoMode ? link : undefined,
+    demoLink: user && req.session.pendingConfirmUserId === user.id ? showLink(link) : undefined,
   });
 });
 
@@ -123,6 +129,8 @@ router.post('/login', async (req, res) => {
 
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) {
+    // Shared demo logins must not be lockable by strangers.
+    if (config.protectDemo && user.is_demo) fail(401, generic);
     const failed = user.failed_logins + 1;
     if (failed >= config.maxFailedLogins) {
       await query(
@@ -159,21 +167,17 @@ router.get('/me', async (req, res) => {
 // FR 1.4 Reset password
 router.post('/forgot', async (req, res) => {
   const { email } = validate(req.body, { email: { required: true, type: 'email' } });
-  const user = await one('SELECT id, email FROM users WHERE email = $1', [email]);
-  let link;
-  if (user) {
+  const user = await one('SELECT id, email, is_demo FROM users WHERE email = $1', [email]);
+  if (user && !(config.protectDemo && user.is_demo)) {
     const token = await issueToken(user.id, 'reset', 30);
-    link = `${config.appUrl}/reset-password?token=${token}`;
+    const link = `${config.appUrl}/reset-password?token=${token}`;
     await sendEmail(
       user.email,
       'Reset your GOG password',
       `Someone asked to reset the password for this account.\n\nOpen this link to choose a new password:\n${link}\n\nThe link expires in 30 minutes. If you did not ask for this, you can ignore this email.`
     );
   }
-  res.json({
-    message: 'If an account exists for that email, a reset link has been sent.',
-    demoLink: config.demoMode ? link : undefined,
-  });
+  res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
 });
 
 router.post('/reset', async (req, res) => {

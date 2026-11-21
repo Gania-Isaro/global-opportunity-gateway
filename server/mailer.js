@@ -10,6 +10,10 @@ if (config.smtp.host && config.smtp.user) {
     secure: config.smtp.port === 465,
     requireTLS: config.smtp.port !== 465, // encrypted connection (Section 3.4)
     auth: { user: config.smtp.user, pass: config.smtp.pass },
+    // A slow mail server must not hold up signup.
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
   });
 }
 
@@ -29,8 +33,13 @@ export async function sendEmail(to, subject, body) {
   } else {
     console.log(`[mail] To: ${to}\n[mail] Subject: ${subject}\n${body}\n`);
   }
-  await query(
-    'INSERT INTO email_outbox (to_email, subject, body, delivered) VALUES ($1, $2, $3, $4)',
-    [to, subject, body, delivered]
-  );
+  try {
+    await query(
+      'INSERT INTO email_outbox (to_email, subject, body, delivered) VALUES ($1, $2, $3, $4)',
+      [to, subject, body, delivered]
+    );
+  } catch (err) {
+    console.error('[mail] could not record the email', err.message);
+  }
+  return delivered;
 }

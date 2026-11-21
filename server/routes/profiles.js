@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { one, query } from '../db.js';
-import { fail, requireAuth } from '../middleware.js';
+import { fail, requireAuth, isPublicDemoAdmin } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 
 const router = Router();
@@ -48,7 +48,7 @@ router.put('/profile', requireAuth, async (req, res) => {
 router.get('/users/:id', requireAuth, async (req, res) => {
   const id = idParam(req.params.id);
   const p = await one(
-    `SELECT p.*, u.role, u.created_at AS member_since, o.name AS org_name, o.status AS org_status
+    `SELECT p.*, u.role, u.is_demo, u.created_at AS member_since, o.name AS org_name, o.status AS org_status
        FROM profiles p JOIN users u ON u.id = p.user_id
        LEFT JOIN organisations o ON o.rep_user_id = u.id
       WHERE p.user_id = $1`,
@@ -56,7 +56,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
   );
   if (!p) fail(404, 'User not found.');
 
-  let full = req.user.id === id || req.user.role === 'admin';
+  let full = req.user.id === id || (req.user.role === 'admin' && (!isPublicDemoAdmin(req.user) || p.is_demo));
   if (!full) {
     const link = await one(
       `SELECT 1 FROM applications a JOIN challenges c ON c.id = a.challenge_id

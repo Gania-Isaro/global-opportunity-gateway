@@ -1,6 +1,7 @@
 // Demo data for the GOG prototype.
 // Run with: npm run seed           (adds data only if the database is empty)
 //           npm run seed -- --reset (wipes everything and seeds again)
+//           npm run demo:reset      (restores only the demo data)
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'node:url';
 import { pool, one, initSchema, tx } from './db.js';
@@ -66,6 +67,11 @@ const USERS = [
   },
 ];
 
+// Databases seeded before is_demo existed get their demo accounts marked here.
+export async function markDemoAccounts() {
+  await pool.query('UPDATE users SET is_demo = TRUE WHERE email = ANY($1) AND NOT is_demo', [USERS.map((u) => u.email)]);
+}
+
 export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
   if (reset) {
     await pool.query(`TRUNCATE users, organisations, challenges, applications, invitations, projects,
@@ -84,13 +90,19 @@ export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
 
     for (const u of USERS) {
       const row = await q(
-        'INSERT INTO users (email, password_hash, role, email_verified) VALUES ($1,$2,$3,TRUE) RETURNING id',
+        `INSERT INTO users (email, password_hash, role, email_verified, is_demo) VALUES ($1,$2,$3,TRUE,TRUE)
+         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, banned = FALSE,
+           failed_logins = 0, locked_until = NULL, is_demo = TRUE
+         RETURNING id`,
         [u.email, hash, u.role]
       );
       id[u.key] = row.id;
       await q(
         `INSERT INTO profiles (user_id, full_name, bio, skills, education, location, interests, experiences)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, bio = EXCLUDED.bio, skills = EXCLUDED.skills,
+           education = EXCLUDED.education, location = EXCLUDED.location, interests = EXCLUDED.interests,
+           experiences = EXCLUDED.experiences`,
         [row.id, u.name, u.bio || '', u.skills || [], u.education || '', u.location || '', u.interests || '', u.experiences || '']
       );
     }
@@ -222,11 +234,40 @@ export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
   return true;
 }
 
-// Allow running this file directly: node server/seed.js [--reset]
+// Restores the demo accounts and their content. Real accounts are kept.
+// The demo admin stays so the audit log keeps its author.
+export async function resetDemoData() {
+  await markDemoAccounts();
+  await pool.query("DELETE FROM users WHERE is_demo AND role <> 'admin'");
+  await pool.query('DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE is_demo)');
+  await pool.query(`DELETE FROM reports r
+    WHERE r.reporter_id IS NULL
+       OR (r.target_type = 'challenge' AND NOT EXISTS (SELECT 1 FROM challenges c WHERE c.id = r.target_id))
+       OR (r.target_type = 'user' AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = r.target_id))`);
+  await seedDemoData({ onlyIfEmpty: false });
+  await pool.query(`INSERT INTO app_meta (key, value) VALUES ('demo_reset_at', $1)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [new Date().toISOString()]);
+}
+
+// Called on start and every hour, because free hosting can sleep through a timer.
+export async function resetDemoDataIfDue(hours) {
+  if (!hours) return false;
+  const row = await one("SELECT value FROM app_meta WHERE key = 'demo_reset_at'");
+  if (!row) {
+    await pool.query("INSERT INTO app_meta (key, value) VALUES ('demo_reset_at', $1)", [new Date().toISOString()]);
+    return false;
+  }
+  if (Date.now() - new Date(row.value).getTime() < hours * 3600 * 1000) return false;
+  await resetDemoData();
+  return true;
+}
+
+// Allow running this file directly: node server/seed.js [--reset | --demo]
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const reset = process.argv.includes('--reset');
+  const demoOnly = process.argv.includes('--demo');
   initSchema()
-    .then(() => seedDemoData({ onlyIfEmpty: !reset, reset }))
+    .then(() => (demoOnly ? resetDemoData().then(() => true) : seedDemoData({ onlyIfEmpty: !reset, reset })))
     .then((added) => {
       if (!added) console.log('The database already has data. Use "npm run seed -- --reset" to start fresh.');
     })
