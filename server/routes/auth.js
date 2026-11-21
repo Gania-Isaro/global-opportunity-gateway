@@ -41,12 +41,12 @@ async function useToken(token, kind) {
 async function sendConfirmation(user) {
   const token = await issueToken(user.id, 'confirm', 60 * 24);
   const link = `${config.appUrl}/confirm-email?token=${token}`;
-  await sendEmail(
+  const delivered = await sendEmail(
     user.email,
     'Confirm your GOG account',
     `Welcome to GOG.\n\nPlease confirm your email address by opening this link:\n${link}\n\nThe link is valid for 24 hours.`
   );
-  return link;
+  return { link, delivered };
 }
 
 export async function currentUserPayload(userId) {
@@ -85,10 +85,12 @@ router.post('/register', async (req, res) => {
     await c.query('INSERT INTO profiles (user_id, full_name) VALUES ($1, $2)', [rows[0].id, data.fullName]);
     return rows[0];
   });
-  const link = await sendConfirmation(user);
+  const { link, delivered } = await sendConfirmation(user);
   req.session.pendingConfirmUserId = user.id;
   res.status(201).json({
-    message: 'Account created. Check your email for a confirmation link.',
+    message: emailEnabled && !delivered
+      ? 'Account created, but the confirmation email could not be sent. Try "Resend" on the log in page in a few minutes.'
+      : 'Account created. Check your email for a confirmation link.',
     demoLink: showLink(link),
   });
 });
@@ -104,7 +106,7 @@ router.post('/resend-confirmation', async (req, res) => {
   const { email } = validate(req.body, { email: { required: true, type: 'email' } });
   const user = await one('SELECT id, email, email_verified FROM users WHERE email = $1', [email]);
   let link;
-  if (user && !user.email_verified) link = await sendConfirmation(user);
+  if (user && !user.email_verified) ({ link } = await sendConfirmation(user));
   res.json({
     message: 'If that account exists and is not confirmed yet, a new link has been sent.',
     demoLink: user && req.session.pendingConfirmUserId === user.id ? showLink(link) : undefined,
