@@ -127,6 +127,8 @@ router.post('/login', async (req, res) => {
 
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) {
+    // Shared demo logins must not be lockable by strangers.
+    if (config.protectDemo && user.is_demo) fail(401, generic);
     const failed = user.failed_logins + 1;
     if (failed >= config.maxFailedLogins) {
       await query(
@@ -163,8 +165,8 @@ router.get('/me', async (req, res) => {
 // FR 1.4 Reset password
 router.post('/forgot', async (req, res) => {
   const { email } = validate(req.body, { email: { required: true, type: 'email' } });
-  const user = await one('SELECT id, email FROM users WHERE email = $1', [email]);
-  if (user) {
+  const user = await one('SELECT id, email, is_demo FROM users WHERE email = $1', [email]);
+  if (user && !(config.protectDemo && user.is_demo)) {
     const token = await issueToken(user.id, 'reset', 30);
     const link = `${config.appUrl}/reset-password?token=${token}`;
     await sendEmail(
