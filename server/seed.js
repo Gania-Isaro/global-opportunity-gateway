@@ -238,6 +238,7 @@ export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
 // The demo admin stays so the audit log keeps its author.
 export async function resetDemoData() {
   await markDemoAccounts();
+  await pool.query('DELETE FROM workspace_denials WHERE is_demo');
   await pool.query("DELETE FROM users WHERE is_demo AND role <> 'admin'");
   await pool.query('DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE is_demo)');
   await pool.query(`DELETE FROM reports r
