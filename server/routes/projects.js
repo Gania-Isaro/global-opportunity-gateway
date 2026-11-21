@@ -13,7 +13,7 @@ const router = Router();
 async function workspaceAccess(req, res, next) {
   const projectId = idParam(req.params.projectId);
   const project = await one(
-    `SELECT p.*, c.title AS challenge_title FROM projects p
+    `SELECT p.*, c.title AS challenge_title, c.status AS challenge_status, c.team_size FROM projects p
        JOIN challenges c ON c.id = p.challenge_id WHERE p.id = $1`,
     [projectId]
   );
@@ -144,6 +144,14 @@ router.put('/projects/:projectId/members/:userId', ...ws, async (req, res) => {
 router.get('/projects/:projectId/tasks', ...ws, async (req, res) => {
   const rows = await many(
     `SELECT t.*, pa.full_name AS assignee_name, pc.full_name AS creator_name
+  if (req.project.challenge_status === 'removed') fail(400, 'This challenge was removed by an administrator.');
+  const team = await one(
+    'SELECT count(*)::int AS n, bool_or(user_id = $2) AS already FROM project_members WHERE project_id = $1 AND user_id <> $3',
+    [req.project.id, user_id, req.project.owner_id]
+  );
+  if (!team.already && team.n >= req.project.team_size) {
+    fail(400, `This team can have at most ${req.project.team_size} participants.`);
+  }
        FROM tasks t
        LEFT JOIN profiles pa ON pa.user_id = t.assignee_id
        LEFT JOIN profiles pc ON pc.user_id = t.created_by
