@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useAuth } from '../auth.jsx';
 import { PageHeader } from '../components/ui.jsx';
 
 const FAQ = [
@@ -45,6 +46,7 @@ const FAQ = [
 ];
 
 export default function Help() {
+  const { user } = useAuth();
   return (
     <div className="container narrow">
       <PageHeader title="Help and FAQ" subtitle="A short guide to using GOG." />
@@ -68,6 +70,20 @@ export default function Help() {
           <li>Form the team. Use the workspace to add tasks, milestones, research, files and discussions.</li>
         </ol>
       </section>
+
+      {user?.role === 'admin' && (
+        <section className="card form-card guide" aria-labelledby="admin-guide">
+          <h2 id="admin-guide">Administrator guide</h2>
+          <ol>
+            <li><strong>Verify organisations.</strong> In <Link to="/admin/organisations">Verification</Link>, read the details and documents, then verify or reject. A rejection needs a clear reason, because the organisation sees it and can resubmit.</li>
+            <li><strong>Review reports.</strong> In <Link to="/admin/reports">Reports</Link>, open each item. Remove a challenge that breaks the rules, or dismiss the report if it does not.</li>
+            <li><strong>Manage accounts.</strong> In <Link to="/admin/users">Users</Link>, suspend an account that breaks the rules. A suspended person loses access at once. Use the same button to unlock them.</li>
+            <li><strong>Check the audit log.</strong> <Link to="/admin/audit">Audit log</Link> records every administrator decision and cannot be edited.</li>
+            <li><strong>Follow the pilot.</strong> <Link to="/admin/pilot-report">Pilot report</Link> compares progress with the six month targets. You can print it or download a CSV.</li>
+          </ol>
+          <p>On the public demo, this login can only see and change demo data, and it cannot suspend accounts.</p>
+        </section>
+      )}
 
       <h2 className="section-title small-title">Frequently asked questions</h2>
       <div className="faq">
