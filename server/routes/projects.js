@@ -3,7 +3,7 @@ import { one, many, query } from '../db.js';
 import { fail, isPublicDemoAdmin, requireAuth } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 import { acceptFiles } from '../uploads.js';
-import { notify } from '../notify.js';
+import { audit, notify } from '../notify.js';
 
 const router = Router();
 
@@ -26,11 +26,30 @@ async function workspaceAccess(req, res, next) {
     isAdmin = Boolean(projectOwner?.is_demo);
   }
   if (!member && !isOwner && !isAdmin) {
+    await query(
+      `INSERT INTO workspace_denials (project_id, user_id, is_demo)
+       SELECT $1, $2, is_demo FROM users WHERE id = $3`,
+      [projectId, req.user.id, project.owner_id]
+    );
     fail(403, 'This workspace is private to its team.');
   }
   req.project = project;
   req.access = { isOwner, isAdmin, isMember: Boolean(member), canManage: isOwner || isAdmin };
+  if (isAdmin && !isOwner && req.method !== 'GET') auditAdminChange(req, res);
   next();
+}
+
+// NFR 11: every successful change an administrator makes in a workspace is logged.
+function auditAdminChange(req, res) {
+  const send = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 400) return send(body);
+    const details = `${req.method} ${req.originalUrl.split('?')[0]}: ${body?.message || 'Workspace changed.'}`;
+    audit(req.user.id, 'workspace_change', 'project', req.project.id, details)
+      .catch((err) => console.error('[audit] could not record the change', err.message))
+      .finally(() => send(body));
+    return res;
+  };
 }
 
 const ws = [requireAuth, workspaceAccess];
@@ -125,6 +144,14 @@ router.post('/projects/:projectId/members', ...ws, async (req, res) => {
     [req.project.challenge_id, user_id]
   );
   if (!ok) fail(400, 'Only participants who confirmed their invitation can join the team.');
+  if (req.project.challenge_status === 'removed') fail(400, 'This challenge was removed by an administrator.');
+  const team = await one(
+    'SELECT count(*)::int AS n, bool_or(user_id = $2) AS already FROM project_members WHERE project_id = $1 AND user_id <> $3',
+    [req.project.id, user_id, req.project.owner_id]
+  );
+  if (!team.already && team.n >= req.project.team_size) {
+    fail(400, `This team can have at most ${req.project.team_size} participants.`);
+  }
   await query("INSERT INTO project_members (project_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [req.project.id, user_id]);
   await notify(user_id, 'team_formed', `You were added to the team "${req.project.name}".`, `/projects/${req.project.id}`);
   res.json({ message: 'Member added to the team.' });
@@ -144,14 +171,6 @@ router.put('/projects/:projectId/members/:userId', ...ws, async (req, res) => {
 router.get('/projects/:projectId/tasks', ...ws, async (req, res) => {
   const rows = await many(
     `SELECT t.*, pa.full_name AS assignee_name, pc.full_name AS creator_name
-  if (req.project.challenge_status === 'removed') fail(400, 'This challenge was removed by an administrator.');
-  const team = await one(
-    'SELECT count(*)::int AS n, bool_or(user_id = $2) AS already FROM project_members WHERE project_id = $1 AND user_id <> $3',
-    [req.project.id, user_id, req.project.owner_id]
-  );
-  if (!team.already && team.n >= req.project.team_size) {
-    fail(400, `This team can have at most ${req.project.team_size} participants.`);
-  }
        FROM tasks t
        LEFT JOIN profiles pa ON pa.user_id = t.assignee_id
        LEFT JOIN profiles pc ON pc.user_id = t.created_by
