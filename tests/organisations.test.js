@@ -76,3 +76,29 @@ test('FR 3.3: only an administrator can decide, and documents stay private', asy
   const list = await admin.get('/admin/organisations?status=pending');
   assert.ok(list.data.organisations.some((o) => o.id === ctx.approvedId));
 });
+
+test('FR 3.3 / 3.4 / 3.5: approval gives the Verified status and notifies the representative', async () => {
+  const r = await admin.post(`/admin/organisations/${ctx.approvedId}/decision`, { decision: 'verified' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const page = await stranger.get(`/organisations/${ctx.approvedId}`);
+  assert.equal(page.data.organisation.status, 'verified');
+  const notes = await approved.get('/notifications');
+  assert.ok(notes.data.notifications.some((n) => n.type === 'verification_decision' && /now verified/.test(n.message)));
+  const audit = await admin.get('/admin/audit');
+  assert.ok(audit.data.entries.some((e) => e.action === 'verify_organisation' && e.target_id === ctx.approvedId));
+});
+
+test('FR 3.3 / 3.5: rejection needs a reason, and the representative can see it and resubmit', async () => {
+  const url = `/admin/organisations/${ctx.rejectedId}/decision`;
+  assert.equal((await admin.post(url, { decision: 'rejected' })).status, 400, 'a reason is required');
+  const reason = 'The registration document is unreadable.';
+  assert.equal((await admin.post(url, { decision: 'rejected', reason })).status, 200);
+  const mine = await rejected.get('/organisations/mine');
+  assert.equal(mine.data.organisation.status, 'rejected');
+  assert.equal(mine.data.organisation.rejection_reason, reason);
+  const notes = await rejected.get('/notifications');
+  assert.ok(notes.data.notifications.some((n) => n.type === 'verification_decision' && n.message.includes(reason)));
+  const again = await rejected.post('/organisations', orgForm(`Rejected Org Fixed ${stamp}`));
+  assert.equal(again.status, 201);
+  assert.equal(again.data.organisation.status, 'pending');
+});
