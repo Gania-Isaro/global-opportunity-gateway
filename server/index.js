@@ -18,7 +18,7 @@ import notificationRoutes from './routes/notifications.js';
 import dashboardRoutes from './routes/dashboard.js';
 import adminRoutes from './routes/admin.js';
 import reportRoutes from './routes/reports.js';
-import { markDemoAccounts, seedDemoData } from './seed.js';
+import { markDemoAccounts, resetDemoDataIfDue, seedDemoData } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -96,7 +96,11 @@ async function start() {
   if (config.seedOnStart) await seedDemoData({ onlyIfEmpty: true });
   await markDemoAccounts();
   await autoCloseChallenges();
-  setInterval(() => autoCloseChallenges().catch((e) => console.error(e)), 60 * 60 * 1000);
+  await resetDemoDataIfDue(config.demoResetHours);
+  setInterval(() => {
+    autoCloseChallenges().catch((e) => console.error(e));
+    resetDemoDataIfDue(config.demoResetHours).catch((e) => console.error(e));
+  }, 60 * 60 * 1000);
   app.listen(config.port, () => {
     console.log(`GOG server running on http://localhost:${config.port}`);
     if (!emailEnabled) console.log('No SMTP settings found. Emails will be printed here instead of sent.');

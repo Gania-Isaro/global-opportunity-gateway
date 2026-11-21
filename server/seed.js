@@ -1,6 +1,7 @@
 // Demo data for the GOG prototype.
 // Run with: npm run seed           (adds data only if the database is empty)
 //           npm run seed -- --reset (wipes everything and seeds again)
+//           npm run demo:reset      (restores only the demo data)
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'node:url';
 import { pool, one, initSchema, tx } from './db.js';
@@ -233,11 +234,40 @@ export async function seedDemoData({ onlyIfEmpty = true, reset = false } = {}) {
   return true;
 }
 
-// Allow running this file directly: node server/seed.js [--reset]
+// Restores the demo accounts and their content. Real accounts are kept.
+// The demo admin stays so the audit log keeps its author.
+export async function resetDemoData() {
+  await markDemoAccounts();
+  await pool.query("DELETE FROM users WHERE is_demo AND role <> 'admin'");
+  await pool.query('DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE is_demo)');
+  await pool.query(`DELETE FROM reports r
+    WHERE r.reporter_id IS NULL
+       OR (r.target_type = 'challenge' AND NOT EXISTS (SELECT 1 FROM challenges c WHERE c.id = r.target_id))
+       OR (r.target_type = 'user' AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = r.target_id))`);
+  await seedDemoData({ onlyIfEmpty: false });
+  await pool.query(`INSERT INTO app_meta (key, value) VALUES ('demo_reset_at', $1)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [new Date().toISOString()]);
+}
+
+// Called on start and every hour, because free hosting can sleep through a timer.
+export async function resetDemoDataIfDue(hours) {
+  if (!hours) return false;
+  const row = await one("SELECT value FROM app_meta WHERE key = 'demo_reset_at'");
+  if (!row) {
+    await pool.query("INSERT INTO app_meta (key, value) VALUES ('demo_reset_at', $1)", [new Date().toISOString()]);
+    return false;
+  }
+  if (Date.now() - new Date(row.value).getTime() < hours * 3600 * 1000) return false;
+  await resetDemoData();
+  return true;
+}
+
+// Allow running this file directly: node server/seed.js [--reset | --demo]
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const reset = process.argv.includes('--reset');
+  const demoOnly = process.argv.includes('--demo');
   initSchema()
-    .then(() => seedDemoData({ onlyIfEmpty: !reset, reset }))
+    .then(() => (demoOnly ? resetDemoData().then(() => true) : seedDemoData({ onlyIfEmpty: !reset, reset })))
     .then((added) => {
       if (!added) console.log('The database already has data. Use "npm run seed -- --reset" to start fresh.');
     })
