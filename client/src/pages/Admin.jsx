@@ -311,7 +311,9 @@ export function AdminPilotReport() {
       {error && <LoadError error={error} reload={reload} />}
       {data && (
         <>
-          <p className="small muted">Generated {formatDateTime(data.generated_at)}</p>
+          <p className="small muted">
+            Generated {formatDateTime(data.generated_at)}. {data.data_scope === 'demo' ? 'This report shows demo data only.' : 'This report excludes demo data.'}
+          </p>
           <div className="report-grid">
             {data.targets.map((t) => {
               const pct = t.lowerIsBetter ? (t.met ? 100 : 0) : Math.min(100, Math.round((t.actual / t.target) * 100));
