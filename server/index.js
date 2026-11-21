@@ -18,7 +18,7 @@ import notificationRoutes from './routes/notifications.js';
 import dashboardRoutes from './routes/dashboard.js';
 import adminRoutes from './routes/admin.js';
 import reportRoutes from './routes/reports.js';
-import { seedDemoData } from './seed.js';
+import { markDemoAccounts, seedDemoData } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -94,6 +94,7 @@ app.use(errorHandler);
 async function start() {
   await initSchema();
   if (config.seedOnStart) await seedDemoData({ onlyIfEmpty: true });
+  await markDemoAccounts();
   await autoCloseChallenges();
   setInterval(() => autoCloseChallenges().catch((e) => console.error(e)), 60 * 60 * 1000);
   app.listen(config.port, () => {
