@@ -184,10 +184,14 @@ router.post('/reset', async (req, res) => {
   const { password } = validate(req.body, { password: { required: true, type: 'password' } });
   const userId = await useToken(req.body?.token, 'reset');
   const hash = await bcrypt.hash(password, 12);
-  await query(
-    'UPDATE users SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1',
-    [userId, hash]
-  );
+  await tx(async (c) => {
+    await c.query(
+      'UPDATE users SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1',
+      [userId, hash]
+    );
+    // Section 5.3: a stolen session stops working once the password changes.
+    await c.query("DELETE FROM user_sessions WHERE (sess->>'userId')::int = $1", [userId]);
+  });
   res.json({ message: 'Your password has been changed. You can now log in.' });
 });
 
