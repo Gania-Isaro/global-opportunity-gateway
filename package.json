@@ -17,6 +17,8 @@
     "start": "node server/index.js",
     "seed": "node server/seed.js",
     "demo:reset": "node server/seed.js --demo",
+    "db:backup": "node scripts/backup.js",
+    "db:restore": "node scripts/restore.js",
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {

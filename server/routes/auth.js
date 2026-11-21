@@ -191,6 +191,40 @@ router.post('/reset', async (req, res) => {
   res.json({ message: 'Your password has been changed. You can now log in.' });
 });
 
+// NFR 15 Delete my account. The audit log keeps a record without personal data.
+router.post('/delete-account', requireAuth, async (req, res) => {
+  const { password } = validate(req.body, { password: { required: true, label: 'Password' } });
+  if (req.user.role === 'admin') fail(403, 'Administrator accounts cannot be deleted here.');
+  if (config.protectDemo && req.user.is_demo) fail(403, 'Demo accounts cannot be deleted on the public site.');
+  const account = await one('SELECT email, password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!(await bcrypt.compare(password, account.password_hash))) {
+    fail(400, 'Please fix the highlighted fields.', { password: 'That password is not correct.' });
+  }
+  const active = await one("SELECT count(*)::int AS n FROM projects WHERE owner_id = $1 AND status = 'active'", [req.user.id]);
+  if (active.n) fail(409, 'You own an active project. Complete it before deleting your account so your team keeps its work.');
+
+  await tx(async (c) => {
+    await c.query(
+      `INSERT INTO notifications (user_id, type, message)
+       SELECT a.participant_id, 'challenge_removed',
+              'The challenge "' || ch.title || '" is no longer available because its owner deleted their account.'
+         FROM applications a JOIN challenges ch ON ch.id = a.challenge_id
+        WHERE ch.owner_id = $1 AND a.status NOT IN ('withdrawn', 'rejected')`,
+      [req.user.id]
+    );
+    await c.query(
+      'INSERT INTO audit_log (admin_id, action, target_type, target_id, details) VALUES (NULL, $1, $2, $3, $4)',
+      ['delete_account', 'user', req.user.id, 'The user deleted their own account.']
+    );
+    await c.query('DELETE FROM email_outbox WHERE to_email = $1', [account.email]);
+    await c.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+  });
+  req.session.destroy(() => {
+    res.clearCookie('gog.sid');
+    res.json({ message: 'Your account has been deleted.' });
+  });
+});
+
 router.get('/session', requireAuth, (req, res) => {
   res.json({ expiresAt: req.session.cookie.expires });
 });
