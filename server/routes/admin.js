@@ -8,6 +8,14 @@ import { notify, audit } from '../notify.js';
 const router = Router();
 const admin = [requireAuth, requireRole('admin')];
 
+const DEMO_ONLY = 'The public demo administrator can only change demo data.';
+
+async function assertDemoTarget(req, userId) {
+  if (!isPublicDemoAdmin(req.user)) return;
+  const target = userId ? await one('SELECT is_demo FROM users WHERE id = $1', [userId]) : null;
+  if (!target?.is_demo) fail(403, DEMO_ONLY);
+}
+
 export async function adminSummary(user) {
   const counts = await one(
     `SELECT (SELECT count(*) FROM users WHERE role <> 'admin')::int AS users,
@@ -56,6 +64,7 @@ router.get('/admin/organisations', ...admin, async (req, res) => {
 router.post('/admin/organisations/:id/decision', ...admin, async (req, res) => {
   const org = await one('SELECT * FROM organisations WHERE id = $1', [idParam(req.params.id)]);
   if (!org) fail(404, 'Organisation not found.');
+  await assertDemoTarget(req, org.rep_user_id);
   const d = validate(req.body, {
     decision: { required: true, type: 'enum', values: ['verified', 'rejected'], label: 'Decision' },
     reason: { max: 500 },
@@ -101,8 +110,10 @@ router.get('/admin/users', ...admin, async (req, res) => {
 router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
   const id = idParam(req.params.id);
   if (id === req.user.id) fail(400, 'You cannot suspend your own account.');
-  const u = await one('SELECT id, email, role, banned FROM users WHERE id = $1', [id]);
+  const u = await one('SELECT id, email, role, banned, is_demo FROM users WHERE id = $1', [id]);
   if (!u) fail(404, 'User not found.');
+  if (isPublicDemoAdmin(req.user)) fail(403, DEMO_ONLY);
+  if (config.protectDemo && u.is_demo) fail(403, 'Demo accounts cannot be suspended on the public site.');
   if (u.role === 'admin') fail(400, 'Administrator accounts cannot be suspended here.');
   const { reason } = validate(req.body, { reason: { max: 500 } });
   const banned = !u.banned;
@@ -116,6 +127,7 @@ router.post('/admin/users/:id/ban', ...admin, async (req, res) => {
 router.post('/admin/challenges/:id/remove', ...admin, async (req, res) => {
   const c = await one('SELECT * FROM challenges WHERE id = $1', [idParam(req.params.id)]);
   if (!c) fail(404, 'Challenge not found.');
+  await assertDemoTarget(req, c.owner_id);
   if (c.status === 'removed') fail(400, 'This challenge was already removed.');
   const { reason } = validate(req.body, { reason: { required: true, label: 'Reason', max: 500 } });
   await query("UPDATE challenges SET status = 'removed', closed_at = now() WHERE id = $1", [c.id]);
@@ -140,6 +152,9 @@ router.get('/admin/reports', ...admin, async (req, res) => {
 });
 
 router.post('/admin/reports/:id/dismiss', ...admin, async (req, res) => {
+  const open = await one("SELECT reporter_id FROM reports WHERE id = $1 AND status = 'open'", [idParam(req.params.id)]);
+  if (!open) fail(404, 'Open report not found.');
+  await assertDemoTarget(req, open.reporter_id);
   const r = await one("UPDATE reports SET status = 'dismissed' WHERE id = $1 AND status = 'open' RETURNING *", [idParam(req.params.id)]);
   if (!r) fail(404, 'Open report not found.');
   await audit(req.user.id, 'dismiss_report', r.target_type, r.target_id, r.reason);
