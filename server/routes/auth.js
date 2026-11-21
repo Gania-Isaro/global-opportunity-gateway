@@ -3,12 +3,15 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { one, query, tx } from '../db.js';
 import { config } from '../config.js';
-import { sendEmail } from '../mailer.js';
+import { emailEnabled, sendEmail } from '../mailer.js';
 import { fail, requireAuth } from '../middleware.js';
 import { validate } from '../validate.js';
 import { profileStatus } from './profiles.js';
 
 const router = Router();
+
+// On-screen links exist only for demos without a mail server.
+const showLink = (link) => (config.demoMode && !emailEnabled ? link : undefined);
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
@@ -83,9 +86,10 @@ router.post('/register', async (req, res) => {
     return rows[0];
   });
   const link = await sendConfirmation(user);
+  req.session.pendingConfirmUserId = user.id;
   res.status(201).json({
     message: 'Account created. Check your email for a confirmation link.',
-    demoLink: config.demoMode ? link : undefined,
+    demoLink: showLink(link),
   });
 });
 
@@ -103,7 +107,7 @@ router.post('/resend-confirmation', async (req, res) => {
   if (user && !user.email_verified) link = await sendConfirmation(user);
   res.json({
     message: 'If that account exists and is not confirmed yet, a new link has been sent.',
-    demoLink: config.demoMode ? link : undefined,
+    demoLink: user && req.session.pendingConfirmUserId === user.id ? showLink(link) : undefined,
   });
 });
 
