@@ -200,6 +200,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS app_meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS email_outbox (
   id          SERIAL PRIMARY KEY,
   to_email    TEXT NOT NULL,
