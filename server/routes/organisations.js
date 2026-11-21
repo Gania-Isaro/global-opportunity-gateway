@@ -67,10 +67,13 @@ router.get('/organisations/mine', requireAuth, async (req, res) => {
 router.get('/organisations/:id', async (req, res) => {
   const id = idParam(req.params.id);
   const org = await one(
-    'SELECT id, name, sector, description, status, created_at FROM organisations WHERE id = $1',
+    'SELECT id, rep_user_id, name, sector, description, status, created_at FROM organisations WHERE id = $1',
     [id]
   );
-  if (!org) fail(404, 'Organisation not found.');
+  // FR 3.4: only verified organisations are shown publicly.
+  const canReview = org && (org.rep_user_id === req.user?.id || req.user?.role === 'admin');
+  if (!org || (org.status !== 'verified' && !canReview)) fail(404, 'Organisation not found.');
+  delete org.rep_user_id;
   const challenges = await many(
     `SELECT id, title, sector, deadline, status FROM challenges
       WHERE org_id = $1 AND status IN ('published', 'closed') ORDER BY created_at DESC`,

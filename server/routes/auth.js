@@ -184,10 +184,14 @@ router.post('/reset', async (req, res) => {
   const { password } = validate(req.body, { password: { required: true, type: 'password' } });
   const userId = await useToken(req.body?.token, 'reset');
   const hash = await bcrypt.hash(password, 12);
-  await query(
-    'UPDATE users SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1',
-    [userId, hash]
-  );
+  await tx(async (c) => {
+    await c.query(
+      'UPDATE users SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1',
+      [userId, hash]
+    );
+    // Section 5.3: a stolen session stops working once the password changes.
+    await c.query("DELETE FROM user_sessions WHERE (sess->>'userId')::int = $1", [userId]);
+  });
   res.json({ message: 'Your password has been changed. You can now log in.' });
 });
 
@@ -215,6 +219,16 @@ router.post('/delete-account', requireAuth, async (req, res) => {
     await c.query(
       'INSERT INTO audit_log (admin_id, action, target_type, target_id, details) VALUES (NULL, $1, $2, $3, $4)',
       ['delete_account', 'user', req.user.id, 'The user deleted their own account.']
+    );
+    // NFR 15: earlier audit entries keep the action but lose personal data.
+    await c.query(
+      `UPDATE audit_log SET details = NULL WHERE target_type = 'user' AND target_id = $1
+         AND action IN ('suspend_user', 'unlock_user')`,
+      [req.user.id]
+    );
+    await c.query(
+      `UPDATE audit_log SET details = replace(details, $1, '[deleted user]') WHERE strpos(details, $1) > 0`,
+      [account.email]
     );
     await c.query('DELETE FROM email_outbox WHERE to_email = $1', [account.email]);
     await c.query('DELETE FROM users WHERE id = $1', [req.user.id]);

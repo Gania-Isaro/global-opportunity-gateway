@@ -200,6 +200,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Blocked attempts to open a private workspace (Section 1.4 security target).
+CREATE TABLE IF NOT EXISTS workspace_denials (
+  id          SERIAL PRIMARY KEY,
+  project_id  INT NOT NULL,
+  user_id     INT REFERENCES users(id) ON DELETE SET NULL,
+  is_demo     BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Challenges posted before an organisation was verified also get its badge (FR 3.4).
+UPDATE challenges c SET org_id = o.id
+  FROM organisations o
+ WHERE o.rep_user_id = c.owner_id AND o.status = 'verified' AND c.org_id IS NULL;
+
 CREATE TABLE IF NOT EXISTS app_meta (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL

@@ -3,9 +3,14 @@ import { one, many, query, tx } from '../db.js';
 import { fail, requireAuth, requireVerified } from '../middleware.js';
 import { validate, idParam } from '../validate.js';
 import { notify } from '../notify.js';
-import { autoCloseChallenges } from './challenges.js';
+import { autoCloseChallenges, teamPlacesTaken } from './challenges.js';
 
 const router = Router();
+
+// FR 12.2: a removed challenge cannot move forward.
+function assertNotRemoved(status) {
+  if (status === 'removed') fail(400, 'This challenge was removed by an administrator.');
+}
 
 async function ownedChallenge(id, user) {
   const c = await one('SELECT * FROM challenges WHERE id = $1', [id]);
@@ -16,12 +21,13 @@ async function ownedChallenge(id, user) {
 
 async function applicationForOwner(appId, user) {
   const a = await one(
-    `SELECT a.*, c.owner_id, c.title AS challenge_title, c.id AS challenge_id
+    `SELECT a.*, c.owner_id, c.title AS challenge_title, c.id AS challenge_id, c.status AS challenge_status
        FROM applications a JOIN challenges c ON c.id = a.challenge_id WHERE a.id = $1`,
     [appId]
   );
   if (!a) fail(404, 'Application not found.');
   if (a.owner_id !== user.id) fail(403, 'Only the challenge owner can do that.');
+  assertNotRemoved(a.challenge_status);
   return a;
 }
 
@@ -119,8 +125,16 @@ router.post('/applications/:id/decision', requireAuth, async (req, res) => {
   const { decision } = validate(req.body, {
     decision: { required: true, type: 'enum', values: ['accepted', 'rejected'], label: 'Decision' },
   });
-  if (!['submitted', 'under_review'].includes(a.status)) fail(400, 'A decision has already been made on this application.');
-  await query('UPDATE applications SET status = $2, decided_at = now() WHERE id = $1', [a.id, decision]);
+  await tx(async (cl) => {
+    // The lock stops two decisions from filling the same team place.
+    const { rows: [c] } = await cl.query('SELECT team_size FROM challenges WHERE id = $1 FOR UPDATE', [a.challenge_id]);
+    const { rows: [current] } = await cl.query('SELECT status FROM applications WHERE id = $1', [a.id]);
+    if (!['submitted', 'under_review'].includes(current.status)) fail(400, 'A decision has already been made on this application.');
+    if (decision === 'accepted' && await teamPlacesTaken(cl, a.challenge_id) >= c.team_size) {
+      fail(400, `This team is full. The team size is ${c.team_size}.`);
+    }
+    await cl.query('UPDATE applications SET status = $2, decided_at = now() WHERE id = $1', [a.id, decision]);
+  });
   const msg = decision === 'accepted'
     ? `Good news: your application to "${a.challenge_title}" was accepted. Watch for an invitation to join the team.`
     : `Your application to "${a.challenge_title}" was not selected this time. Thank you for applying.`;
@@ -162,12 +176,13 @@ router.get('/invitations/mine', requireAuth, async (req, res) => {
 // FR 7.4 The participant confirms or declines
 router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
   const inv = await one(
-    `SELECT i.*, a.participant_id, c.owner_id, c.title, c.id AS challenge_id
+    `SELECT i.*, a.participant_id, c.owner_id, c.title, c.id AS challenge_id, c.status AS challenge_status
        FROM invitations i JOIN applications a ON a.id = i.application_id
        JOIN challenges c ON c.id = a.challenge_id WHERE i.id = $1`,
     [idParam(req.params.id)]
   );
   if (!inv || inv.participant_id !== req.user.id) fail(404, 'Invitation not found.');
+  assertNotRemoved(inv.challenge_status);
   if (inv.status !== 'sent') fail(400, 'You have already responded to this invitation.');
   const { response } = validate(req.body, {
     response: { required: true, type: 'enum', values: ['confirmed', 'declined'], label: 'Response' },
@@ -185,6 +200,7 @@ router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
 // FR 8.1 Form team and FR 8.2 create the project (BR 5 at least one member, BR 6 one project per challenge)
 router.post('/challenges/:id/project', requireAuth, async (req, res) => {
   const c = await ownedChallenge(idParam(req.params.id), req.user);
+  assertNotRemoved(c.status);
   const d = validate(req.body, {
     name: { required: true, label: 'Project name', max: 160 },
     members: { type: 'list', default: [] },
@@ -201,6 +217,7 @@ router.post('/challenges/:id/project', requireAuth, async (req, res) => {
     fail(400, 'At least one participant must confirm their invitation before you can form a team.');
   }
   if (ids.some((id) => !allowed.has(id))) fail(400, 'Only participants who confirmed their invitation can join the team.');
+  if (chosen.length > c.team_size) fail(400, `This team can have at most ${c.team_size} participants.`);
 
   const project = await tx(async (cl) => {
     const exists = await cl.query('SELECT id FROM projects WHERE challenge_id = $1', [c.id]);
