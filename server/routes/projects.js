@@ -77,7 +77,8 @@ router.get('/projects/:projectId', ...ws, async (req, res) => {
   const p = req.project;
   const challenge = await one(
     `SELECT c.id, c.title, c.description, c.outcome, c.sector, c.skills, c.deadline, c.team_size,
-            o.name AS org_name, (o.status = 'verified') AS verified
+            CASE WHEN o.status = 'verified' THEN o.name END AS org_name,
+            COALESCE(o.status = 'verified', FALSE) AS verified
        FROM challenges c LEFT JOIN organisations o ON o.id = c.org_id WHERE c.id = $1`,
     [p.challenge_id]
   );

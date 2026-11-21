@@ -22,7 +22,9 @@ export async function autoCloseChallenges() {
 
 const CHALLENGE_SELECT = `
   SELECT c.*, p.full_name AS owner_name,
-         o.id AS org_id, o.name AS org_name, (o.status = 'verified') AS verified,
+         CASE WHEN o.status = 'verified' THEN o.id END AS org_id,
+         CASE WHEN o.status = 'verified' THEN o.name END AS org_name,
+         COALESCE(o.status = 'verified', FALSE) AS verified,
          (SELECT count(*)::int FROM applications a WHERE a.challenge_id = c.id AND a.status <> 'withdrawn') AS application_count
     FROM challenges c
     JOIN profiles p ON p.user_id = c.owner_id
