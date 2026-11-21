@@ -40,3 +40,19 @@ services:
         value: "true"
       - key: SEED_DEMO_DATA
         value: "true"
+      # Demo logins are public, so they may only touch demo data.
+      - key: PROTECT_DEMO
+        value: "true"
+      - key: DEMO_RESET_HOURS
+        value: "24"
+      # Real email. These are entered in the Render dashboard.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
