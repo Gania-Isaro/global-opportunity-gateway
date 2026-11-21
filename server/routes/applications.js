@@ -7,6 +7,11 @@ import { autoCloseChallenges } from './challenges.js';
 
 const router = Router();
 
+// FR 12.2: a removed challenge cannot move forward.
+function assertNotRemoved(status) {
+  if (status === 'removed') fail(400, 'This challenge was removed by an administrator.');
+}
+
 async function ownedChallenge(id, user) {
   const c = await one('SELECT * FROM challenges WHERE id = $1', [id]);
   if (!c) fail(404, 'Challenge not found.');
@@ -16,12 +21,13 @@ async function ownedChallenge(id, user) {
 
 async function applicationForOwner(appId, user) {
   const a = await one(
-    `SELECT a.*, c.owner_id, c.title AS challenge_title, c.id AS challenge_id
+    `SELECT a.*, c.owner_id, c.title AS challenge_title, c.id AS challenge_id, c.status AS challenge_status
        FROM applications a JOIN challenges c ON c.id = a.challenge_id WHERE a.id = $1`,
     [appId]
   );
   if (!a) fail(404, 'Application not found.');
   if (a.owner_id !== user.id) fail(403, 'Only the challenge owner can do that.');
+  assertNotRemoved(a.challenge_status);
   return a;
 }
 
@@ -162,7 +168,7 @@ router.get('/invitations/mine', requireAuth, async (req, res) => {
 // FR 7.4 The participant confirms or declines
 router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
   const inv = await one(
-    `SELECT i.*, a.participant_id, c.owner_id, c.title, c.id AS challenge_id
+    `SELECT i.*, a.participant_id, c.owner_id, c.title, c.id AS challenge_id, c.status AS challenge_status
        FROM invitations i JOIN applications a ON a.id = i.application_id
        JOIN challenges c ON c.id = a.challenge_id WHERE i.id = $1`,
     [idParam(req.params.id)]
@@ -176,6 +182,7 @@ router.post('/invitations/:id/respond', requireAuth, async (req, res) => {
   await notify(
     inv.owner_id,
     'invitation_response',
+  assertNotRemoved(inv.challenge_status);
     `${req.user.full_name} ${response === 'confirmed' ? 'confirmed' : 'declined'} the invitation for "${inv.title}".`,
     `/my-challenges/${inv.challenge_id}/applications`
   );
@@ -193,6 +200,7 @@ router.post('/challenges/:id/project', requireAuth, async (req, res) => {
   const confirmed = await many(
     `SELECT a.participant_id FROM applications a JOIN invitations i ON i.application_id = a.id
       WHERE a.challenge_id = $1 AND i.status = 'confirmed'`,
+  assertNotRemoved(c.status);
     [c.id]
   );
   const allowed = new Set(confirmed.map((r) => r.participant_id));
