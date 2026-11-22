@@ -197,7 +197,7 @@ Then open http://localhost:4000. If you use this mode, set `APP_URL=http://local
 | `npm run demo:reset` | Restore only the demo data and keep real accounts |
 | `npm run db:backup` | Create a database backup in `backups/` |
 | `npm run db:restore -- backups/<file> --yes` | Restore a backup, replacing the current data |
-| `npm test` | Run the 33 end to end tests (the server must be running) |
+| `npm test` | Run the 45 end to end tests (the server must be running) |
 
 ### Tests
 
