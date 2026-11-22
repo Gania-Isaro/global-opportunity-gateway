@@ -16,6 +16,10 @@ export const config = {
   // On the public site, demo logins can only touch demo data.
   protectDemo: process.env.PROTECT_DEMO === 'true',
   demoResetHours: Number(process.env.DEMO_RESET_HOURS) || 0,
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY,
+    url: process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email',
+  },
   smtp: {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,
