@@ -68,7 +68,7 @@ Security and quality requirements I implemented:
 | Front end | React 19, React Router, Vite |
 | Back end | Node.js, Express 5 (REST API with JSON) |
 | Database | PostgreSQL |
-| Email | Nodemailer over SMTP (optional, emails are printed to the server log when SMTP is not set) |
+| Email | Brevo API, with optional SMTP through Nodemailer (emails are printed to the server log when neither is set) |
 | File storage | Stored in PostgreSQL (10 MB limit per file) |
 | Hosting | Render (web service) and Neon (PostgreSQL), both on free plans |
 
@@ -256,7 +256,15 @@ Note: the free Render plan sleeps after 15 minutes without visits, so the first 
 
 ### Real emails (optional)
 
-To send real emails, add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` from any SMTP provider (for example Brevo or a Gmail app password). If sending fails, signup still works and the person is told to resend. Without these settings, emails are printed to the server log.
+Render's free plan blocks the SMTP ports, so I send real emails through the Brevo API:
+
+1. Create a free account at [brevo.com](https://www.brevo.com).
+2. In Brevo, open **Senders, Domains & Dedicated IPs** and add and verify the email address that will send GOG emails.
+3. Open **SMTP & API**, then **API Keys**, and generate a new key.
+4. In Render, open the GOG service, then **Environment**, and set `BREVO_API_KEY` to that key and `MAIL_FROM` to `GOG <your-verified-email>`.
+5. Save and let the service redeploy. `https://gog.gania.tech/api/health` should now show `"email":"brevo"`.
+
+On a host that allows SMTP, you can instead set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM`. If sending fails, signup still works and the person is told to resend. With no email provider, emails are printed to the server log.
 
 ---
 
