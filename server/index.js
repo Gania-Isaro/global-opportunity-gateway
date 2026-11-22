@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { pool, initSchema } from './db.js';
 import { loadUser, csrfGuard, errorHandler, HttpError } from './middleware.js';
-import { emailEnabled } from './mailer.js';
+import { emailEnabled, emailMode } from './mailer.js';
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
 import organisationRoutes from './routes/organisations.js';
@@ -68,7 +68,7 @@ app.use(
 const api = express.Router();
 api.use(csrfGuard);
 api.use(loadUser);
-api.get('/health', (req, res) => res.json({ ok: true, email: emailEnabled ? 'smtp' : 'log', demoMode: config.demoMode }));
+api.get('/health', (req, res) => res.json({ ok: true, email: emailMode, demoMode: config.demoMode }));
 api.use('/auth', authRoutes);
 api.use(profileRoutes);
 api.use(organisationRoutes);
@@ -103,7 +103,7 @@ async function start() {
   }, 60 * 60 * 1000);
   app.listen(config.port, () => {
     console.log(`GOG server running on http://localhost:${config.port}`);
-    if (!emailEnabled) console.log('No SMTP settings found. Emails will be printed here instead of sent.');
+    if (!emailEnabled) console.log('No email provider found. Emails will be printed here instead of sent.');
   });
 }
 

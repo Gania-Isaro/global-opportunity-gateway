@@ -4,7 +4,7 @@ I ran these checks on 21 November 2026 against the production build on my comput
 
 ## Automated tests (Section 5.4)
 
-`npm test` runs 33 end to end tests through the REST API, and all 33 pass. Every functional requirement from FR 1 to FR 12 has at least one test.
+`npm test` runs 45 end to end tests through the REST API, and all 45 pass. Every functional requirement from FR 1 to FR 12 has at least one test.
 
 ## Speed (NFR 6, NFR 7, Section 5.1)
 

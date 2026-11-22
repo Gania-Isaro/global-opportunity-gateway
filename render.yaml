@@ -45,7 +45,10 @@ services:
         value: "true"
       - key: DEMO_RESET_HOURS
         value: "24"
-      # Real email. These are entered in the Render dashboard.
+      # Real email through the Brevo API, because the free plan blocks SMTP ports.
+      # These are entered in the Render dashboard.
+      - key: BREVO_API_KEY
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

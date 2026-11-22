@@ -3,7 +3,7 @@ import { config } from './config.js';
 import { query } from './db.js';
 
 let transport = null;
-if (config.smtp.host && config.smtp.user) {
+if (!config.brevo.apiKey && config.smtp.host && config.smtp.user) {
   transport = nodemailer.createTransport({
     host: config.smtp.host,
     port: config.smtp.port,
@@ -17,15 +17,33 @@ if (config.smtp.host && config.smtp.user) {
   });
 }
 
-export const emailEnabled = Boolean(transport);
+export const emailMode = config.brevo.apiKey ? 'brevo' : transport ? 'smtp' : 'log';
+export const emailEnabled = emailMode !== 'log';
 
-// Every email is recorded in email_outbox. If SMTP is configured it is also
-// delivered; otherwise it is printed to the server log.
+// Turns "GOG <hello@example.com>" into the sender object Brevo expects.
+export function parseSender(value) {
+  const match = /^\s*(.*?)\s*<([^<>\s]+@[^<>\s]+)>\s*$/.exec(value);
+  return match ? { name: match[1] || 'GOG', email: match[2] } : { name: 'GOG', email: value.trim() };
+}
+
+async function sendWithBrevo(to, subject, body) {
+  const res = await fetch(config.brevo.url, {
+    method: 'POST',
+    headers: { 'api-key': config.brevo.apiKey, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: parseSender(config.smtp.from), to: [{ email: to }], subject, textContent: body }),
+    signal: AbortSignal.timeout(10000), // a slow provider must not hold up signup
+  });
+  if (!res.ok) throw new Error(`Brevo returned ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
+// Every email is recorded in email_outbox. If Brevo or SMTP is configured it is
+// also delivered; otherwise it is printed to the server log.
 export async function sendEmail(to, subject, body) {
   let delivered = false;
-  if (transport) {
+  if (emailEnabled) {
     try {
-      await transport.sendMail({ from: config.smtp.from, to, subject, text: body });
+      if (emailMode === 'brevo') await sendWithBrevo(to, subject, body);
+      else await transport.sendMail({ from: config.smtp.from, to, subject, text: body });
       delivered = true;
     } catch (err) {
       console.error('[mail] failed to send to', to, err.message);
